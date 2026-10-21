@@ -2,7 +2,9 @@
 
 简体中文 · [English](README.md)
 
-独立插件：[最新 Release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css)。
+**[从 Obsidian 市场安装（推荐）](https://community.obsidian.md/plugins/inkstone-annotations)** · **[安装与更新](#安装与更新)**
+
+手动下载（备选）：[最新 Release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css)。
 
 ## 操作演示
 
@@ -14,10 +16,29 @@
 
 标注直接保存在当前 Markdown 中，兼容旧版 Inkstone 标记。插件只使用本地 Obsidian API，不调用网络，不需要账户或其他插件；实时预览使用 Obsidian 自带的 CodeMirror，用户无需安装依赖。Inkstone 主题仍是纯 CSS，可独立使用。
 
-
-**社区目录状态（2026-10-21）：** 插件自动审核已完成（**Completed**），[公开页面](https://community.obsidian.md/plugins/inkstone-annotations)显示 **Review Satisfactory**，**Add to Obsidian** 已可用。打开页面 → 点击 **Add to Obsidian** → 在 Obsidian 中按提示安装并启用。GitHub Release 手动安装仍可作为备选。Inkstone 主题 **1.3.7** 同日自动审核已完成（**Completed**），[主题公开页面](https://community.obsidian.md/themes/inkstone)显示 **Review Satisfactory**，仅支持浅色（**Light only**）；打开主题页面 → 点击 **Add to Obsidian** → 在 Obsidian 中按提示使用或选择 Inkstone 主题。
+**[在 Obsidian 安装插件](https://community.obsidian.md/plugins/inkstone-annotations)** · **[安装配套主题](https://community.obsidian.md/themes/inkstone)**
 
 ## 安装与更新
+
+### 推荐：从 Obsidian 市场安装
+
+先在 Obsidian 中打开要使用的笔记库。市场安装不需要 Git、Python 或构建步骤。主题与插件是两个独立组件，按需要分别安装：
+
+- **标注插件：** 打开「设置 → 第三方插件（Community plugins）」，首次使用时如有需要，关闭「受限模式（Restricted mode）」。点击「浏览（Browse）」，搜索 **Inkstone Annotations**（插件 ID：`inkstone-annotations`），点击「安装（Install）」后，再点击「启用（Enable）」。也可在「已安装插件（Installed plugins）」中打开插件开关。
+- **配套主题：** 打开「设置 → 外观 → 主题 → 管理（Manage）」，搜索 **Inkstone**，点击「安装并使用（Install and use）」。主题仅支持浅色（**Light only**），请将配色设为浅色。只使用标注插件时无需安装主题。
+
+也可以打开上方的市场页面，点击 **Add to Obsidian**，在目标笔记库中继续安装；安装主题不会自动安装或启用插件。启用后，选中同一源代码行内的普通文字，应出现「划线」「写想法」快捷操作；也可在命令面板中搜索「墨读：打开标注侧栏」。
+
+### 在市场更新单个组件
+
+- **只更新插件：** 打开「设置 → 第三方插件 → 检查更新（Check for updates）」，在「已安装插件」中只点击 **Inkstone Annotations** 旁的「更新（Update）」。更新完成后确认其开关仍为启用。
+- **只更新主题：** 打开「设置 → 外观 → 主题 → 管理」，选择 **Inkstone**；如显示「检查更新（Check for updates）」，先点击检查，再点击「更新（Update）」。
+
+主题与插件不会自动安装新版本，需要分别更新；只更新 Inkstone 时无需点击「全部更新」。完成后，确认 Inkstone 和浅色仍被选中，再试一次划线或写想法。已从 GitHub 手动安装到 `themes/Inkstone/`、`plugins/inkstone-annotations/` 且插件 ID 未改的用户，可直接检查市场更新，无需卸载重装；保留插件的 `data.json`、已保存标注和个人设置。操作说明也可参考 Obsidian 官方的[社区插件](https://obsidian.md/help/community-plugins)与[主题](https://obsidian.md/help/themes)文档。
+
+### 备选：GitHub Release 或安装脚本
+
+独立插件由 [obsidian-inkstone-annotations](https://github.com/bufan1024/obsidian-inkstone-annotations) 发布，可从其 [Release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) 获取三个运行文件。
 
 手动安装时，将插件的三个运行文件放到以下目录：
 
@@ -31,7 +52,7 @@
             └── manifest.json
 ```
 
-在「设置 → 第三方插件」关闭「受限模式」，手动启用「Inkstone Annotations」。未出现在列表中时，重启 Obsidian，并检查目录是否多嵌套了一层。`.obsidian` 是隐藏目录；使用自定义配置文件夹时替换为实际名称。独立主题包不包含 JavaScript，也不会添加操作入口。
+首次手动安装后，在「设置 → 第三方插件」中按需关闭「受限模式」，启用「Inkstone Annotations」。未出现在列表中时，重启 Obsidian，并检查目录是否多嵌套了一层。`.obsidian` 是隐藏目录；使用自定义配置文件夹时替换为实际名称。独立主题包不包含 JavaScript，也不会添加操作入口。
 
 更新前关闭 Obsidian 并备份旧文件，只替换上述三个文件，保留 `data.json`。使用[上游主题仓库](https://github.com/bufan1024/obsidian-inkstone)或合集中的安装脚本时（本独立插件仓库不含安装器），可运行 `python3 scripts/install.py --vault "/你的笔记库路径" --update --plugin-only`，先加 `--dry-run` 可查看计划。它保留当前主题、配色、行宽偏好和插件数据，不会自动启用插件。完整步骤见[安装与更新教程](https://github.com/bufan1024/obsidian-inkstone/blob/main/INSTALL.md)。
 

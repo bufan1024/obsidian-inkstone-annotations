@@ -2,7 +2,9 @@
 
 [简体中文](README.zh-CN.md) · English
 
-Standalone plugin files: [latest release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css).
+**[Install from the Obsidian marketplace (recommended)](https://community.obsidian.md/plugins/inkstone-annotations)** · **[Installation and updates](#install-and-update)**
+
+Manual download (alternative): [latest release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css).
 
 ## Demos
 
@@ -12,14 +14,32 @@ Standalone plugin files: [latest release](https://github.com/bufan1024/obsidian-
 
 Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. **Plugin 1.1.7**, paired with **Inkstone theme 1.3.7**; requires Obsidian **1.10.6 or later**.
 
-The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings. Use [GitHub Releases](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) or the repository for manual installation.
+The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings.
 
 Everything is processed locally through Obsidian APIs. No network calls, account, or other plugin is required. Live Preview uses CodeMirror bundled with Obsidian. Annotations are saved directly in Markdown and remain compatible with older Inkstone markup. The Inkstone theme is plain CSS and can be used separately.
 
-
-**Directory status (2026-10-21):** The plugin's automated review is **Completed**. Its [public page](https://community.obsidian.md/plugins/inkstone-annotations) shows **Review Satisfactory**, and **Add to Obsidian** is available. Open the page → choose **Add to Obsidian** → follow the prompts in Obsidian to install and enable it. GitHub Releases remain a manual installation alternative. The automated review for Inkstone theme **1.3.7** is also **Completed**; its [public theme page](https://community.obsidian.md/themes/inkstone) shows **Review Satisfactory**, with **Light only** support. Open the theme page → choose **Add to Obsidian** → follow the prompts in Obsidian to use or select Inkstone.
+**[Install the plugin in Obsidian](https://community.obsidian.md/plugins/inkstone-annotations)** · **[Install the companion theme](https://community.obsidian.md/themes/inkstone)**
 
 ## Install and update
+
+### Recommended: install from Obsidian's community directory
+
+Open the vault you want to use in Obsidian first. Community installation requires no Git, Python, or build tools. Install the plugin and theme separately as needed:
+
+- **Plugin:** Open **Settings → Community plugins** and turn off **Restricted mode** if needed on first use. Choose **Browse**, search for **Inkstone Annotations** (plugin ID: `inkstone-annotations`), then select **Install → Enable**. You can also turn on its switch under **Installed plugins** after installation.
+- **Companion theme:** Open **Settings → Appearance → Themes → Manage**, search for **Inkstone**, and choose **Install and use**. The theme supports **Light only**; set the color scheme to light. You can use the plugin without installing the theme.
+
+Alternatively, open either community page above and choose **Add to Obsidian**, then finish in the target vault. Installing the theme does not install or enable the plugin. Once enabled, select plain text within one source line to see **「划线」 (Mark)** and **「写想法」 (Write a thought)**, or search the command palette for **「墨读：打开标注侧栏」** to open the sidebar.
+
+### Update one component at a time
+
+- **Plugin only:** Open **Settings → Community plugins → Current plugins → Check for updates**. Under **Installed plugins**, choose **Update** beside **Inkstone Annotations** only, then confirm its switch is still enabled.
+- **Theme only:** Open **Settings → Appearance → Themes → Manage** and select **Inkstone**. If **Check for updates** is shown, use it first, then choose **Update**.
+
+New theme and plugin versions are not installed automatically. Update them separately; you do not need **Update all** to update only Inkstone. Confirm that Inkstone and the Light color scheme remain selected, then try a highlight or thought. If you previously installed from GitHub using `themes/Inkstone/` and `plugins/inkstone-annotations/` with the original plugin ID, check for marketplace updates without uninstalling first; keep plugin `data.json`, saved annotations, and your preferences. See the official [community plugin](https://obsidian.md/help/community-plugins) and [theme](https://obsidian.md/help/themes) guides for the app's installation and update controls.
+
+### Alternative: GitHub Release or install script
+
 
 For manual installation, quit Obsidian and place these three runtime files in your vault:
 
@@ -33,7 +53,7 @@ Your vault/
             └── manifest.json
 ```
 
-Use your actual configuration folder if it differs from `.obsidian`. Avoid an extra nested `inkstone-annotations` directory. Reopen Obsidian, open **Settings → Community plugins**, turn off Restricted mode, and manually enable **「Inkstone Annotations」**. Restart if it does not appear. A standalone theme package does not include JavaScript or add annotation controls.
+Use your actual configuration folder if it differs from `.obsidian`. Avoid an extra nested `inkstone-annotations` directory. After a first manual installation, reopen Obsidian, open **Settings → Community plugins**, turn off Restricted mode if needed, and enable **Inkstone Annotations**. Restart if it does not appear. A standalone theme package does not include JavaScript or add annotation controls.
 
 For a manual update, quit Obsidian, back up the old files, and replace only the three runtime files above. Keep `data.json`.
 
