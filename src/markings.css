@@ -1,0 +1,61 @@
+/* Persisted annotations also render when the companion plugin is disabled. */
+body {
+  --inkstone-annotation-yellow: #f5e5a3;
+  --inkstone-annotation-green: #d8e7c7;
+  --inkstone-annotation-blue: #d5e4ef;
+  --inkstone-annotation-rose: #ead5dc;
+}
+
+.inkstone-highlight,
+.markdown-rendered mark.inkstone-highlight {
+  color: #202020;
+  padding: 0.05em 0.08em;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.inkstone-highlight.inkstone-yellow,
+.markdown-rendered mark.inkstone-highlight.inkstone-yellow,
+.inkstone-swatch-yellow {
+  background-color: var(--inkstone-annotation-yellow);
+  border-bottom: 1px solid #666666;
+}
+
+.inkstone-highlight.inkstone-green,
+.markdown-rendered mark.inkstone-highlight.inkstone-green,
+.inkstone-swatch-green {
+  background-color: var(--inkstone-annotation-green);
+  border-bottom: 3px double #666666;
+}
+
+.inkstone-highlight.inkstone-blue,
+.markdown-rendered mark.inkstone-highlight.inkstone-blue,
+.inkstone-swatch-blue {
+  background-color: var(--inkstone-annotation-blue);
+  border-bottom: 2px dotted #666666;
+}
+
+.inkstone-highlight.inkstone-rose,
+.markdown-rendered mark.inkstone-highlight.inkstone-rose,
+.inkstone-swatch-rose {
+  background-color: var(--inkstone-annotation-rose);
+  border-bottom: 2px dashed #666666;
+}
+
+.inkstone-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+body.inkstone-annotations-monochrome {
+  --inkstone-annotation-yellow: #e6e6e6;
+  --inkstone-annotation-green: #e6e6e6;
+  --inkstone-annotation-blue: #e6e6e6;
+  --inkstone-annotation-rose: #e6e6e6;
+}
+
+@media print {
+  .inkstone-highlight { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
