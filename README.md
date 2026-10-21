@@ -17,7 +17,7 @@ The interface is currently in Chinese. This guide preserves the actual labels an
 Everything is processed locally through Obsidian APIs. No network calls, account, or other plugin is required. Live Preview uses CodeMirror bundled with Obsidian. Annotations are saved directly in Markdown and remain compatible with older Inkstone markup. The Inkstone theme is plain CSS and can be used separately.
 
 
-**Directory status (2026-10-21):** The plugin's automated review is **Completed**. Its [public page](https://community.obsidian.md/plugins/inkstone-annotations) shows **Review Satisfactory**, and **Add to Obsidian** is available. Open the page → choose **Add to Obsidian** → follow the prompts in Obsidian to install and enable it. GitHub Releases remain a manual installation alternative. The Inkstone theme has not been submitted.
+**Directory status (2026-10-21):** The plugin's automated review is **Completed**. Its [public page](https://community.obsidian.md/plugins/inkstone-annotations) shows **Review Satisfactory**, and **Add to Obsidian** is available. Open the page → choose **Add to Obsidian** → follow the prompts in Obsidian to install and enable it. GitHub Releases remain a manual installation alternative. The automated review for Inkstone theme **1.3.7** is also **Completed**; its [public theme page](https://community.obsidian.md/themes/inkstone) shows **Review Satisfactory**, with **Light only** support. Open the theme page → choose **Add to Obsidian** → follow the prompts in Obsidian to use or select Inkstone.
 
 ## Install and update
 
