@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · English
 
-Standalone plugin files: [latest release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css). The plugin is not yet confirmed as listed in Obsidian's community directory.
+Standalone plugin files: [latest release](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) · [main.js](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/main.js) · [manifest.json](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/manifest.json) · [styles.css](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest/download/styles.css).
 
 ## Demos
 
@@ -12,14 +12,16 @@ Standalone plugin files: [latest release](https://github.com/bufan1024/obsidian-
 
 Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. **Plugin 1.1.7**, paired with **Inkstone theme 1.3.7**; requires Obsidian **1.10.6 or later**.
 
-The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings. Install from [GitHub Releases](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) or this repository; this plugin is not yet listed in Obsidian's community directory.
+The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings. Use [GitHub Releases](https://github.com/bufan1024/obsidian-inkstone-annotations/releases/latest) or the repository for manual installation.
 
 Everything is processed locally through Obsidian APIs. No network calls, account, or other plugin is required. Live Preview uses CodeMirror bundled with Obsidian. Annotations are saved directly in Markdown and remain compatible with older Inkstone markup. The Inkstone theme is plain CSS and can be used separately.
 
 
+**Directory status (2026-10-21):** The plugin's automated review is **Completed**. Its [public page](https://community.obsidian.md/plugins/inkstone-annotations) shows **Review Satisfactory**, and **Add to Obsidian** is available. Open the page → choose **Add to Obsidian** → follow the prompts in Obsidian to install and enable it. GitHub Releases remain a manual installation alternative. The Inkstone theme has not been submitted.
+
 ## Install and update
 
-Quit Obsidian. Place these three runtime files in your vault:
+For manual installation, quit Obsidian and place these three runtime files in your vault:
 
 ```text
 Your vault/
