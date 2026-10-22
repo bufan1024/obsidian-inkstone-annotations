@@ -63,7 +63,7 @@ function createEditorExtension(plugin) {
     let parsed = parsedDocuments.get(state.doc);
     if (!parsed) {
       const snapshot = state.doc.toString();
-      parsed = { snapshot, records: annotationCore.parseAnnotations(snapshot) };
+      parsed = { snapshot, records: plugin.recordsFor(snapshot, info.file.path) };
       parsedDocuments.set(state.doc, parsed);
     }
     const { snapshot, records } = parsed;

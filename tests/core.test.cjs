@@ -251,6 +251,58 @@ test('parseAnnotations skips code, unknown attributes and unsafe nested wrappers
   ]) assert.deepEqual(parseAnnotations(document), [], document);
 });
 
+test('parsing preserves protection depth, HTML boundaries and shared notes across dense regions', () => {
+  const mark = text => `<u class="inkstone-underline">${text}</u>[^shared]`;
+  for (const newline of ['\n', '\r\n']) {
+    const document = [
+      '\uFEFF---', mark('frontmatter'), '[^shared]: hidden frontmatter', '---', '',
+      '> > ~~~~html', '> ~~~~', mark('quoted fence'), '[^shared]: hidden fence', '> > ~~~~~', '',
+      '> $$', '$$', mark('quoted math'), '[^shared]: hidden math', '> $$', '',
+      '`' + mark('inline code') + '`', '$' + mark('inline math') + '$',
+      '<!-- ' + mark('comment') + ' -->', '<span title="' + mark('attribute') + '">text</span>',
+      '<div>' + mark('nested HTML') + '</div>', '',
+      mark('first'), '', mark('second'), '', '[^shared]: visible', '    continuation', '',
+    ].join(newline);
+    const records = parseAnnotations(document);
+    assert.deepEqual(records.map(record => [record.text, record.noteId, record.note]), [
+      ['first', 'shared', 'visible\ncontinuation'],
+      ['second', 'shared', 'visible\ncontinuation'],
+    ], JSON.stringify(newline));
+    for (const record of records) assert.equal(document.slice(record.from, record.referenceTo), record.raw);
+  }
+});
+
+test('parsing retains LF-prefix protection semantics when isolated CR characters split source lines', () => {
+  const mark = '<u class="inkstone-underline">visible</u>';
+  const hidden = '<u class="inkstone-underline">hidden</u>';
+  for (const [document, texts] of [
+    ['```\r' + hidden + '\r```\r' + mark + '\n', ['visible']],
+    ['> > ~~~\r> ~~~\r' + hidden + '\r> > ~~~\r' + mark + '\n', ['hidden', 'visible']],
+    ['---\rtitle: value\r---\r' + mark + '\n', ['visible']],
+  ]) {
+    // Existing protection uses the last CR-delimited subline before the next LF.
+    assert.deepEqual(parseAnnotations(document).map(record => record.text), texts);
+  }
+  assert.deepEqual(parseAnnotations(mark + '\r```\n'), []);
+});
+
+test('parsing keeps multiline inline protection and link candidates scoped to their source paragraph', () => {
+  const visible = '<u class="inkstone-underline">visible</u>';
+  const hidden = '<u class="inkstone-underline">hidden</u>';
+  for (const newline of ['\n', '\r\n']) {
+    for (const prefix of [
+      '`start' + newline + hidden + '`',
+      '$start' + newline + hidden + '$',
+      '[link](' + newline + hidden + newline + ')',
+      '`[link](` ' + hidden,
+    ]) {
+      const document = prefix + newline + ' \t' + newline + visible;
+      const expected = prefix.startsWith('`[link](`') ? ['hidden', 'visible'] : ['visible'];
+      assert.deepEqual(parseAnnotations(document).map(record => record.text), expected, document);
+    }
+  }
+});
+
 test('reading projection maps repeated text, wrappers, footnotes, entities and emoji in UTF-16 units', () => {
   const raw = '同 A&amp;😀 <u class="inkstone-underline">同</u>[^old] 同 &#x1F600;';
   const projected = projectReadingParagraph(raw);

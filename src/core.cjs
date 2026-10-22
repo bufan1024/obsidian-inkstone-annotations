@@ -14,7 +14,8 @@ function validateRange(document, from, to) {
   }
 }
 
-function isProtectedLine(document, from) {
+function isProtectedLine(document, from, context) {
+  if (context) return context.protectedLines[from] === 1;
   const lineEnd = document.indexOf('\n', from);
   const lines = document.slice(0, lineEnd < 0 ? document.length : lineEnd).split(/\r\n|\n|\r/);
   let frontmatter = lines[0].replace(/^\uFEFF/, '').trim() === '---';
@@ -53,6 +54,46 @@ function isProtectedLine(document, from) {
   return false;
 }
 
+function buildProtectedLineIndex(document) {
+  const protectedLines = new Uint8Array(document.length);
+  const firstLine = document.match(/^[^\r\n]*/)[0];
+  let frontmatter = firstLine.replace(/^\uFEFF/, '').trim() === '---';
+  let fence = null;
+  let math = null;
+  let index = 0;
+  for (const sourceLine of document.matchAll(/[^\n]*(?:\n|$)/g)) {
+    let protectedLine = false;
+    // isProtectedLine scans to the next LF, so isolated CRs (and the CR in
+    // CRLF) make its final subline determine protection for that whole range.
+    for (const source of sourceLine[0].replace(/\n$/, '').split('\r')) {
+      const quotePrefix = source.match(/^(?:[ \t]*>[ \t]?)+/)?.[0] || '';
+      const quoteDepth = (quotePrefix.match(/>/g) || []).length;
+      const line = source.slice(quotePrefix.length).trim();
+      protectedLine = frontmatter || fence !== null || math !== null;
+      if (frontmatter) {
+        if (index > 0 && /^(---|\.\.\.)$/.test(line)) frontmatter = false;
+      } else if (fence) {
+        const close = line.match(/^(`+|~+)\s*$/);
+        if (quoteDepth === fence.depth && close && close[1][0] === fence.marker[0] && close[1].length >= fence.marker.length) fence = null;
+      } else if (math !== null) {
+        if (quoteDepth === math && line === '$$') math = null;
+      } else {
+        const open = line.match(/^(`{3,}|~{3,})/);
+        if (open) {
+          protectedLine = true;
+          fence = { marker: open[1], depth: quoteDepth };
+        } else if (line.startsWith('$$')) {
+          protectedLine = true;
+          math = line.slice(2).includes('$$') ? null : quoteDepth;
+        }
+      }
+      index++;
+    }
+    if (protectedLine) protectedLines.fill(1, sourceLine.index, sourceLine.index + sourceLine[0].length);
+  }
+  return protectedLines;
+}
+
 function coversStructurePrefix(document, from) {
   const lineStart = document.lastIndexOf('\n', from - 1) + 1;
   const lineEnd = document.indexOf('\n', from);
@@ -66,7 +107,26 @@ function coversStructurePrefix(document, from) {
   return from < lineStart + length;
 }
 
-function paragraphRange(document, from) {
+function paragraphRange(document, from, context) {
+  if (context) {
+    if (!context.paragraphs) {
+      context.paragraphs = [];
+      let start = 0;
+      for (const separator of document.matchAll(/\r?\n[ \t]*\r?\n/g)) {
+        context.paragraphs.push({ start, end: separator.index });
+        start = separator.index + separator[0].length;
+      }
+      context.paragraphs.push({ start, end: document.length });
+    }
+    let low = 0;
+    let high = context.paragraphs.length - 1;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (context.paragraphs[middle].end < from) low = middle + 1;
+      else high = middle;
+    }
+    return context.paragraphs[low];
+  }
   let start = 0;
   let end = document.length;
   for (const separator of document.matchAll(/\r?\n[ \t]*\r?\n/g)) {
@@ -76,10 +136,10 @@ function paragraphRange(document, from) {
   return { start, end };
 }
 
-function insideInlineCode(document, from, to) {
-  const { start, end: paragraphEnd } = paragraphRange(document, from);
+function insideInlineCode(document, from, to, context) {
+  const { start, end: paragraphEnd } = paragraphRange(document, from, context);
   const paragraph = document.slice(start, paragraphEnd);
-  const ticks = [...paragraph.matchAll(/`+/g)].filter(tick => !isProtectedLine(document, start + tick.index));
+  const ticks = [...paragraph.matchAll(/`+/g)].filter(tick => !isProtectedLine(document, start + tick.index, context));
   for (let index = 0; index < ticks.length; index++) {
     const open = ticks[index];
     if (isEscaped(paragraph, open.index)) continue;
@@ -155,9 +215,11 @@ function isIndentedCode(document, lineStart, line) {
   return true;
 }
 
-function insideLinkDestination(document, from, to) {
-  for (const match of document.matchAll(/\][ \t]*(?:\r?\n[ \t]*)?[([]/g)) {
-    if (isEscaped(document, match.index) || isProtectedLine(document, match.index) || insideInlineCode(document, match.index, match.index + 1)) continue;
+function insideLinkDestination(document, from, to, context) {
+  const candidates = document.matchAll(/\][ \t]*(?:\r?\n[ \t]*)?[([]/g);
+  const matches = context ? (context.linkCandidates ??= [...candidates]) : candidates;
+  for (const match of matches) {
+    if (isEscaped(document, match.index) || isProtectedLine(document, match.index, context) || insideInlineCode(document, match.index, match.index + 1, context)) continue;
     const open = match.index + match[0].length - 1;
     const marker = document[open];
     const close = marker === '(' ? ')' : ']';
@@ -174,12 +236,12 @@ function insideLinkDestination(document, from, to) {
   return false;
 }
 
-function insideInlineSyntax(document, from, to) {
+function insideInlineSyntax(document, from, to, context) {
   const start = document.lastIndexOf('\n', from - 1) + 1;
   const nextLine = document.indexOf('\n', from);
   const line = document.slice(start, nextLine < 0 ? document.length : nextLine);
   const intersects = (left, right) => overlaps(from, to, start + left, start + right);
-  if (isIndentedCode(document, start, line) || insideLinkDestination(document, from, to) || insideInlineMath(document, from, to)) return true;
+  if (isIndentedCode(document, start, line) || insideLinkDestination(document, from, to, context) || insideInlineMath(document, from, to, context)) return true;
   if (/^ {0,3}\[[^\]\r\n]+\]:/.test(line)) return true;
   for (const token of line.matchAll(/!?\[\[[^\r\n]*?(?:\]\]|$)|\[\^[^\]\r\n]*(?:\]|$)/g)) {
     if (!isEscaped(line, token.index) && intersects(token.index, token.index + token[0].length)) return true;
@@ -187,12 +249,12 @@ function insideInlineSyntax(document, from, to) {
   return false;
 }
 
-function insideInlineMath(document, from, to) {
-  const { start, end } = paragraphRange(document, from);
+function insideInlineMath(document, from, to, context) {
+  const { start, end } = paragraphRange(document, from, context);
   const paragraph = document.slice(start, end);
   for (let index = 0; index < paragraph.length; index++) {
     if (isEscaped(paragraph, index) || !['$', '\\'].includes(paragraph[index])) continue;
-    if (isProtectedLine(document, start + index) || insideInlineCode(document, start + index, start + index + 1)) continue;
+    if (isProtectedLine(document, start + index, context) || insideInlineCode(document, start + index, start + index + 1, context)) continue;
     if (paragraph[index] === '$') {
       const marker = paragraph[index + 1] === '$' ? '$$' : '$';
       if (/\s/.test(paragraph[index + marker.length] || ' ')) continue;
@@ -362,13 +424,13 @@ function footnoteKey(id) {
   return id.trim().replace(/[ \t]+/g, ' ').toLowerCase();
 }
 
-function footnoteDefinitions(document) {
+function footnoteDefinitions(document, context) {
   const lines = [...document.matchAll(/[^\r\n]*(?:\r\n|\n|\r|$)/g)].filter(match => match[0]);
   const definitions = new Map();
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index][0].replace(/[\r\n]+$/, '');
     const match = line.match(/^ {0,3}\[\^([^\]\r\n]+)\]:[ \t]?(.*)$/);
-    if (!match || isProtectedLine(document, lines[index].index)) continue;
+    if (!match || isProtectedLine(document, lines[index].index, context)) continue;
     const from = lines[index].index;
     const content = [match[2]];
     let to = from + lines[index][0].length;
@@ -399,13 +461,14 @@ function footnoteDefinitions(document) {
 function parseAnnotations(document) {
   if (typeof document !== 'string') throw new Error('笔记内容必须是文字。');
   const records = [];
-  const definitions = footnoteDefinitions(document);
+  const context = { protectedLines: buildProtectedLineIndex(document) };
+  const definitions = footnoteDefinitions(document, context);
   const stack = [];
   const token = /<(?:\/?[A-Za-z]|!|\?)/g;
   let match;
   while ((match = token.exec(document))) {
     const from = match.index;
-    if (isEscaped(document, from) || isProtectedLine(document, from) || insideInlineCode(document, from, from + 1) || insideInlineSyntax(document, from, from + 1)) continue;
+    if (isEscaped(document, from) || isProtectedLine(document, from, context) || insideInlineCode(document, from, from + 1, context) || insideInlineSyntax(document, from, from + 1, context)) continue;
     const html = htmlTokenAt(document, from);
     if (!html) continue;
     token.lastIndex = html.end;

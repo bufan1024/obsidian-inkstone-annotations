@@ -22,6 +22,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
   let draftStyle = { kind: record.kind, color: record.color };
   let busy = false;
   let disposed = false;
+  let composing = false;
   let focusFrame = null;
   let unbindSaveHotkey = null;
   const window = doc.defaultView;
@@ -119,6 +120,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
   }
 
   function showActions() {
+    composing = false;
     cancelFocus();
     clearSaveHotkey();
     actions.replaceChildren();
@@ -142,6 +144,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
   }
 
   function showComposer() {
+    composing = true;
     clearSaveHotkey();
     actions.replaceChildren();
     clearError();
@@ -200,6 +203,10 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
     cancelFocus();
     clearSaveHotkey();
   };
+  element.inkstoneHasDraft = () => !disposed && composing && (busy
+    || draft !== (record.note || '')
+    || draftStyle.kind !== record.kind
+    || (draftStyle.color ?? null) !== (record.color ?? null));
   if (startComposer) showComposer();
   else showActions();
   return element;

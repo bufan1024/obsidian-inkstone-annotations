@@ -459,3 +459,31 @@ test('a stale idea refuses the chosen style and note together', async () => {
   assert.deepEqual(writes,[]);
   assert.equal(fixture.view.getViewData(),'原文被别人改过');
 });
+
+test('writing a thought uses the same small composer without changing the selected note', () => {
+  const fixture = pluginFixture('先读再想');
+  const context = fixture.plugin.getAnnotationContext();
+  fixture.plugin.capture = () => ({ ...context, editor: fixture.view.editor, from: 1, to: 3, reading: false });
+  fixture.plugin.positionToolbar = () => {};
+  fixture.plugin.writeThought();
+  assert.equal(fixture.builtMenus.length, 1);
+  assert.equal(fixture.builtMenus[0].startComposer, true);
+  assert.equal(fixture.builtMenus[0].record.text, '读再');
+  assert.equal(fixture.openedModals.length, 0);
+  assert.equal(fixture.view.getViewData(), '先读再想');
+});
+
+test('reactivating the source pane preserves a dirty thought while stale content still closes it', () => {
+  const fixture = pluginFixture();
+  fixture.openMenu();
+  const doc = fixture.view.containerEl.ownerDocument;
+  const menu = fixture.plugin.toolbars.get(doc);
+  menu.inkstoneHasDraft = () => true;
+  fixture.plugin.handleActiveLeafChange(fixture.view.leaf);
+  assert.equal(fixture.plugin.toolbars.get(doc), menu);
+  assert.equal(menu.isConnected, true);
+  fixture.setText('正文已发生变化');
+  fixture.plugin.handleActiveLeafChange(fixture.view.leaf);
+  assert.equal(fixture.plugin.toolbars.size, 0);
+  assert.equal(menu.isConnected, false);
+});

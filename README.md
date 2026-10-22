@@ -12,7 +12,7 @@ Manual download (alternative): [latest release](https://github.com/bufan1024/obs
 
 ![Review annotations and export excerpts](assets/review-export.gif)
 
-Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. **Plugin 1.1.7**, paired with **Inkstone theme 1.3.7**; requires Obsidian **1.10.6 or later**.
+Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. Plugin **1.1.8** is published; check the plugin marketplace page for its sync and review status. The latest published companion theme remains **1.3.7**; local theme source **1.3.8 is unreleased**. The annotation interactions below apply to plugin 1.1.8. Requires Obsidian **1.10.6 or later**.
 
 The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings.
 
@@ -57,6 +57,8 @@ Use your actual configuration folder if it differs from `.obsidian`. Avoid an ex
 
 For a manual update, quit Obsidian, back up the old files, and replace only the three runtime files above. Keep `data.json`.
 
+The published `Inkstone-Reading-Kit-1.3.7.zip` still contains plugin 1.1.7, not 1.1.8. Obtain the new plugin from its standalone release or the current source checkout.
+
 The optional installer belongs to the [upstream theme repository](https://github.com/bufan1024/obsidian-inkstone) or its reading kit, and is not included here. Run the following only from the upstream checkout or extracted kit:
 
 ```sh
@@ -77,7 +79,7 @@ See the [English project guide](https://github.com/bufan1024/obsidian-inkstone/b
 
 Thoughts are native footnotes appended to the current note. Click a footnote number to jump to the thought, and its return link to go back to the text.
 
-The commands **「墨读：标注与备注」 (Annotation and note)** and **「墨读：添加备注」 (Add note)**, the context-menu entry **「墨读：标注与备注…」**, and the ribbon highlighter icon still open the full annotation panel. Use **「保存标注」 (Save annotation)** or `Cmd+Enter` / `Ctrl+Enter` there; canceling writes nothing.
+The **「墨读：写想法」 (Write a thought)** command uses this same small composer; its `add-note` command ID and existing shortcut bindings are retained. **「墨读：标注与想法」 (Annotation and thought)**, the context-menu entry **「墨读：标注与想法…」**, and the ribbon highlighter icon open the full annotation panel. Use **「保存标注」 (Save annotation)** or `Cmd+Enter` / `Ctrl+Enter` there; canceling writes nothing.
 
 Reading view supports simple paragraphs occupying one source line, including further annotations beside existing Inkstone marks and footnotes. For paragraphs with links, bold text, or other complex Markdown, switch to the editor and select a plain-text portion.
 
@@ -91,7 +93,7 @@ Click a rendered highlight or underline in reading view or Live Preview to open 
 - Choose **「写想法」 (Write a thought)**, or **「编辑想法」 (Edit thought)** when a note exists. The composer stays inside the same popover. Style choices change only the draft until **「保存想法」** or `Cmd+Enter` / `Ctrl+Enter` saves the style and thought together. Keeping the style unchanged preserves the existing mark. Cancel returns to the menu without writing the draft.
 - Choose **「删除标注」 (Delete annotation)** to remove the mark while keeping the text.
 
-Click outside, press `Esc`, scroll, or switch notes to close the menu. The reading-view context menu and the full annotation commands continue to provide the larger panel.
+An unchanged menu dismisses on outside click or scroll. After you edit thought text or its draft style, outside clicks, scrolling, and reactivating the same source keep the draft open. Cancel or `Esc` explicitly discards it without writing; `Esc` restores the previous keyboard focus. Switching notes or changing the source still prevents stale saves; reopen from the current text. The reading-view context menu and the full annotation command provide the larger panel.
 
 In the editor, placing the cursor inside an annotation's text, or selecting part of that text, then running an annotation command updates the whole mark rather than nesting another mark. Keep the HTML tags themselves out of the selection.
 
@@ -105,7 +107,7 @@ Live Preview renders the highlight or underline when the cursor and selection ar
 
 Run **「墨读：打开标注侧栏」 (Open annotation sidebar)**, or choose **「更多 → 打开标注侧栏」 (More → Open annotation sidebar)** from the selection toolbar. It lists annotations from the current Markdown note and refreshes when that note changes.
 
-The header shows the note name, folder, and annotation count; hover over the path to see the full location. Quotes and thoughts have separate visual levels. The list scrolls independently while the filter and export controls remain visible. Action buttons stay visible:
+The header shows the note name, folder, and filtered/total annotation counts; hover over the path to see the full location. Quotes and thoughts have separate visual levels. The list scrolls independently while the filter and export controls remain visible. Updates to the same note preserve those controls and their keyboard focus; unchanged content retains the existing list. Action buttons stay visible:
 
 - **「定位原文」 (Locate source)** jumps to the mark.
 - **「编辑」 (Edit)** opens the [small annotation menu](#edit-or-remove-an-existing-annotation) beside the button. First-screen style choices apply immediately; thought drafts are saved within the popover, and Cancel writes nothing.
@@ -113,7 +115,7 @@ The header shows the note name, folder, and annotation count; hover over the pat
 
 Filter by a color or underline, or choose **「全部标注」 (All annotations)**. Switching notes updates the list; it is a current-note view, not a vault-wide annotation search.
 
-Click **「导出摘录」 (Export excerpts)**, choose **「更多 → 导出当前笔记摘录」**, or run **「墨读：导出当前笔记摘录」**. Export always includes **all annotations in the current note**, regardless of the sidebar filter, with their thoughts and a source link.
+Click **「导出全部」 (Export all)**, choose **「更多 → 导出当前笔记摘录」**, or run **「墨读：导出当前笔记摘录」**. The export button description states the total count. Export always includes **all annotations in the current note**, regardless of the color or underline filter, with their thoughts and a source link.
 
 The new file is created beside the original as `Original note-墨读摘录.md`, then `Original note-墨读摘录-2.md`, and so on if necessary. It opens automatically without overwriting the source or previous exports. An export is a snapshot, not a synchronized view. The sidebar follows the newly opened file; switch back to the original note to continue managing its annotations.
 
@@ -123,7 +125,7 @@ See the [recorded sidebar and export demo](https://github.com/bufan1024/obsidian
 
 The selection toolbar offers **「复制」 (Copy)**, **「划线」 (Mark)**, **「写想法」 (Write a thought)**, and **「更多」 (More)**. The style arrow shows labeled color dots and an underline option; these choices save immediately. The main Mark button reuses your latest style, while an existing mark keeps its current style. More also provides removal for an existing annotation.
 
-The toolbar keeps the captured selection, uses its own interface text size, and appears above the selection or below it when space is limited. Press `Esc` or scroll to dismiss it. Turning off **「快捷标注条」 (Quick annotation toolbar)** in plugin settings still leaves context-menu and command-palette access.
+The toolbar keeps the captured selection and appears above the selection or below it when space is limited. Toolbar, menu, and sidebar text scales with interface font size and uses shared spacing. Press `Esc` or scroll to dismiss the ordinary toolbar; edited thoughts follow the [draft retention rules](#edit-or-remove-an-existing-annotation). Turning off **「快捷标注条」 (Quick annotation toolbar)** in plugin settings still leaves context-menu and command-palette access.
 
 Use Obsidian **Settings → Appearance** for font and font size. The theme supports an optional CSS variable, `--inkstone-font-size`; remove an existing override to restore native font-size control.
 
@@ -143,13 +145,13 @@ The plugin provides 13 commands. Search for **墨读** in the command palette (`
 
 | Actual command label | Action |
 | --- | --- |
-| 墨读：标注与备注 | Open the full annotation panel; remember the last style and color |
+| 墨读：标注与想法 | Open the full annotation panel; remember the last style and color |
 | 墨读：添加下划线 | Add an underline or change an existing mark to an underline |
 | 墨读：黄色高亮 | Add or change to a yellow highlight |
 | 墨读：绿色高亮 | Add or change to a green highlight |
 | 墨读：蓝色高亮 | Add or change to a blue highlight |
 | 墨读：粉色高亮 | Add or change to a pink highlight |
-| 墨读：添加备注 | Open the full note panel; new plain-text selections default to an underline |
+| 墨读：写想法 | Open the small thought composer; new plain-text selections default to an underline; retain command ID `add-note` |
 | 墨读：切换彩色／灰阶标注 | Switch display mode without changing saved colors |
 | 墨读：撤销上次标注 | Undo the most recent annotation addition, edit, or removal |
 | 墨读：打开标注侧栏 | Show the current note's annotations |

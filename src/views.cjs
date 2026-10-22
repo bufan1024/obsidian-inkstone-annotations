@@ -3,6 +3,14 @@
 const VIEW_TYPE = 'inkstone-annotations-list';
 const FILTERS = [['all', '全部标注'], ['yellow', '黄色高亮'], ['green', '绿色高亮'], ['blue', '蓝色高亮'], ['rose', '粉色高亮'], ['underline', '下划线']];
 
+function add(parent, tag, text, className) {
+  const element = parent.ownerDocument.createElement(tag);
+  if (text !== undefined) element.textContent = text;
+  if (className) element.className = className;
+  parent.append(element);
+  return element;
+}
+
 function createSidebarClass(plugin) {
   const { ItemView, Notice } = require('obsidian');
   return class AnnotationSidebar extends ItemView {
@@ -12,7 +20,9 @@ function createSidebarClass(plugin) {
       this.events = [];
       this.opened = false;
       this.nonMarkdownActive = false;
+      this.controls = null;
       this.listEl = null;
+      this.renderedContext = null;
       this.renderedFilePath = null;
       this.renderedFilter = null;
     }
@@ -55,7 +65,9 @@ function createSidebarClass(plugin) {
       this.detachEvents();
       this.contentEl.replaceChildren();
       this.contentEl.classList.remove('inkstone-annotation-sidebar');
+      this.controls = null;
       this.listEl = null;
+      this.renderedContext = null;
       this.renderedFilePath = null;
       this.renderedFilter = null;
     }
@@ -65,42 +77,17 @@ function createSidebarClass(plugin) {
       catch (error) { new Notice(error.message || '未能操作标注，请重新打开当前笔记。'); }
     }
 
-    render() {
-      if (!this.opened) return;
-      const context = this.nonMarkdownActive ? null : plugin.getAnnotationContext();
-      const records = context?.records || [];
-      const filtered = records.filter(record => this.filter === 'all' ||
-        (this.filter === 'underline' ? record.kind === 'underline' : record.kind === 'highlight' && record.color === this.filter));
+    createLayout() {
       const content = this.contentEl;
-      const filePath = context?.filePath || null;
-      const scrollTop = this.renderedFilePath === filePath && this.renderedFilter === this.filter ? this.listEl?.scrollTop || 0 : 0;
       content.replaceChildren();
-      this.renderedFilePath = filePath;
-      this.renderedFilter = this.filter;
-      const add = (parent, tag, text, className) => {
-        const element = content.ownerDocument.createElement(tag);
-        if (text !== undefined) element.textContent = text;
-        if (className) element.className = className;
-        parent.append(element);
-        return element;
-      };
       const header = add(content, 'header', undefined, 'inkstone-annotation-sidebar-header');
       const heading = add(header, 'div', undefined, 'inkstone-annotation-sidebar-heading');
       add(heading, 'h2', '当前笔记标注');
-      const status = add(heading, 'p', `${filtered.length} / ${records.length} 条标注`, 'inkstone-annotation-sidebar-count');
+      const status = add(heading, 'p', undefined, 'inkstone-annotation-sidebar-count');
       status.setAttribute('aria-live', 'polite');
       const source = add(header, 'div', undefined, 'inkstone-annotation-sidebar-source');
-      if (context) {
-        const parts = context.filePath.split('/');
-        const file = parts.pop();
-        source.setAttribute('title', context.filePath);
-        source.setAttribute('aria-label', `当前笔记：${context.filePath}`);
-        add(source, 'p', file.replace(/\.md$/i, '') || file, 'inkstone-annotation-sidebar-source-name');
-        add(source, 'p', parts.join(' / ') || '笔记库根目录', 'inkstone-annotation-sidebar-source-folder');
-      } else {
-        add(source, 'p', '选择一篇笔记', 'inkstone-annotation-sidebar-source-name');
-        add(source, 'p', '打开一篇 Markdown 笔记后查看标注。', 'inkstone-annotation-sidebar-source-folder');
-      }
+      const sourceName = add(source, 'p', undefined, 'inkstone-annotation-sidebar-source-name');
+      const sourceFolder = add(source, 'p', undefined, 'inkstone-annotation-sidebar-source-folder');
       const toolbar = add(header, 'div', undefined, 'inkstone-annotation-sidebar-toolbar');
       const filter = add(toolbar, 'select');
       filter.setAttribute('aria-label', '筛选标注颜色');
@@ -108,20 +95,61 @@ function createSidebarClass(plugin) {
         const option = add(filter, 'option', label);
         option.value = value;
       }
+      filter.addEventListener('change', () => { this.filter = filter.value; this.render(); });
+      const exportButton = add(toolbar, 'button', '导出全部');
+      exportButton.setAttribute('type', 'button');
+      exportButton.addEventListener('click', () => this.perform(() => plugin.exportAnnotations()));
+      this.controls = { status, source, sourceName, sourceFolder, filter, exportButton };
+      this.listEl = add(content, 'div', undefined, 'inkstone-annotation-sidebar-list');
+    }
+
+    render() {
+      if (!this.opened) return;
+      const context = this.nonMarkdownActive ? null : plugin.getAnnotationContext();
+      const previous = this.renderedContext;
+      // Another Markdown pane can show identical text but needs its own action captures.
+      if (this.listEl && previous?.view === context?.view && previous?.filePath === context?.filePath &&
+        previous?.snapshot === context?.snapshot && this.renderedFilter === this.filter) return;
+      const filePath = context?.filePath || null;
+      const scrollTop = this.renderedFilePath === filePath && this.renderedFilter === this.filter ? this.listEl?.scrollTop || 0 : 0;
+      if (!this.listEl) this.createLayout();
+      const records = context?.records || [];
+      const filtered = [];
+      for (const [index, record] of records.entries()) {
+        if (this.filter === 'all' || (this.filter === 'underline' ? record.kind === 'underline' : record.kind === 'highlight' && record.color === this.filter)) {
+          filtered.push({ record, ordinal: index + 1 });
+        }
+      }
+      const { status, source, sourceName, sourceFolder, filter, exportButton } = this.controls;
+      status.textContent = `${filtered.length} / ${records.length} 条标注`;
+      source.setAttribute('title', filePath || '');
+      source.setAttribute('aria-label', context ? `当前笔记：${filePath}` : '尚未选择当前笔记');
+      if (context) {
+        const parts = filePath.split('/');
+        const file = parts.pop();
+        sourceName.textContent = file.replace(/\.md$/i, '') || file;
+        sourceFolder.textContent = parts.join(' / ') || '笔记库根目录';
+      } else {
+        sourceName.textContent = '选择一篇笔记';
+        sourceFolder.textContent = '打开一篇 Markdown 笔记后查看标注。';
+      }
       filter.value = this.filter;
       filter.disabled = !context;
-      filter.addEventListener('change', () => { this.filter = filter.value; this.render(); });
-      const exportButton = add(toolbar, 'button', '导出摘录');
-      exportButton.setAttribute('type', 'button');
       exportButton.disabled = records.length === 0;
-      exportButton.addEventListener('click', () => this.perform(() => plugin.exportAnnotations()));
-      const list = add(content, 'div', undefined, 'inkstone-annotation-sidebar-list');
-      this.listEl = list;
+      const exportDescription = `导出当前笔记的全部 ${records.length} 条标注，包含当前筛选未显示的标注。`;
+      exportButton.setAttribute('aria-description', exportDescription);
+      exportButton.setAttribute('title', exportDescription);
+      this.renderedContext = context;
+      this.renderedFilePath = filePath;
+      this.renderedFilter = this.filter;
+      const list = this.listEl;
+      list.replaceChildren();
       if (!context || filtered.length === 0) {
         add(list, 'p', !context ? '暂无当前笔记。' : records.length ? '没有符合筛选条件的标注。' : '当前笔记暂无标注。', 'inkstone-annotation-sidebar-empty');
+        list.scrollTop = scrollTop;
         return;
       }
-      for (const record of filtered) {
+      for (const { record, ordinal } of filtered) {
         const card = add(list, 'article', undefined, 'inkstone-annotation-card');
         card.setAttribute('data-kind', record.kind);
         card.setAttribute('data-color', record.color || '');
@@ -132,7 +160,6 @@ function createSidebarClass(plugin) {
         const swatch = add(badge, 'span', undefined, `inkstone-annotation-card-swatch inkstone-swatch-${record.kind === 'underline' ? 'underline' : record.color || 'default'}`);
         swatch.setAttribute('aria-hidden', 'true');
         add(badge, 'span', label);
-        const ordinal = records.indexOf(record) + 1;
         const index = add(meta, 'span', String(ordinal).padStart(2, '0'), 'inkstone-annotation-card-index');
         index.setAttribute('aria-label', `第 ${ordinal} 条标注`);
         add(card, 'blockquote', record.text, 'inkstone-annotation-card-text');
