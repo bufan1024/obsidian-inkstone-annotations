@@ -5,11 +5,11 @@ const COLORS = [
   ['rose', '粉色'],
 ];
 
-function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onClose, onCancel, onResize, bindSaveHotkey, startComposer = false }) {
+function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onClose, onCancel, onResize, bindSaveHotkey, startComposer = false, t = source => source, labelForRecord }) {
   const element = doc.createElement('div');
   element.className = 'inkstone-selection-toolbar inkstone-annotation-menu';
   element.setAttribute('role', 'dialog');
-  element.setAttribute('aria-label', '标注操作');
+  element.setAttribute('aria-label', t('标注操作'));
   const actions = doc.createElement('div');
   actions.className = 'inkstone-annotation-menu-content';
   const error = doc.createElement('p');
@@ -18,6 +18,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
   error.hidden = true;
   element.append(actions, error);
 
+  let discarded = false;
   let draft = record.note || '';
   let draftStyle = { kind: record.kind, color: record.color };
   let busy = false;
@@ -47,12 +48,16 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
     });
   }
 
-  function button(label, callback, className = '') {
+  function button(label, callback, className = '', literal = false) {
     const result = doc.createElement('button');
     result.type = 'button';
     result.className = `inkstone-toolbar-action ${className}`.trim();
-    result.textContent = label;
-    result.setAttribute('aria-label', label);
+    const caption = literal ? label : t(label);
+    if (className.includes('inkstone-toolbar-style')) {
+      const text = doc.createElement('span'); text.className = 'inkstone-style-label'; text.textContent = caption; result.append(text);
+      result.title = caption;
+    } else result.textContent = caption;
+    result.setAttribute('aria-label', literal ? label : t(label));
     result.addEventListener('click', event => {
       event.stopPropagation();
       if (!busy && !disposed) callback();
@@ -75,7 +80,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
       await callback();
     } catch (failure) {
       if (!disposed) {
-        error.textContent = failure?.message || '保存失败，请重试。';
+        error.textContent = t(failure?.message || '保存失败，请重试。');
         error.hidden = false;
         onResize?.();
       }
@@ -92,11 +97,11 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
     const styles = doc.createElement('div');
     styles.className = 'inkstone-annotation-menu-styles';
     styles.setAttribute('role', 'group');
-    styles.setAttribute('aria-label', '标注样式');
+    styles.setAttribute('aria-label', t('标注样式'));
     const choices = [];
     for (const [color, label] of COLORS) {
       const option = { kind: 'highlight', color };
-      const style = button(label, () => choose(option), 'inkstone-toolbar-style');
+      const style = button(labelForRecord ? labelForRecord(option) : t(label), () => choose(option), 'inkstone-toolbar-style', true);
       const dot = doc.createElement('span');
       dot.className = `inkstone-toolbar-dot inkstone-swatch-${color}`;
       dot.setAttribute('aria-hidden', 'true');
@@ -144,7 +149,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
   }
 
   function showComposer() {
-    composing = true;
+    composing = true; discarded = false;
     clearSaveHotkey();
     actions.replaceChildren();
     clearError();
@@ -157,8 +162,8 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
     });
     const input = doc.createElement('textarea');
     input.className = 'inkstone-annotation-menu-input';
-    input.setAttribute('aria-label', '想法内容');
-    input.placeholder = '写下你的想法…';
+    input.setAttribute('aria-label', t('想法内容'));
+    input.placeholder = t('写下你的想法…');
     input.value = draft;
     input.addEventListener('input', () => { draft = input.value; });
     const save = () => perform(() => onSaveNote(input.value, { ...draftStyle }));
@@ -172,7 +177,7 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
     controls.className = 'inkstone-annotation-menu-actions inkstone-annotation-menu-composer-actions';
     controls.append(
       button('取消', () => {
-        draft = input.value;
+        discarded = true; draft = input.value;
         if (startComposer) {
           cancelFocus();
           clearSaveHotkey();
@@ -198,12 +203,14 @@ function createAnnotationMenu({ doc, record, onStyle, onSaveNote, onDelete, onCl
       onClose?.();
     }
   });
+  element.inkstoneDiscardDraft = () => { discarded = true; };
+  element.inkstoneGetDraft = () => !discarded && element.inkstoneHasDraft() ? { note: draft, quote: record.text || '', ...draftStyle } : null;
   element.inkstoneDispose = () => {
     disposed = true;
     cancelFocus();
     clearSaveHotkey();
   };
-  element.inkstoneHasDraft = () => !disposed && composing && (busy
+  element.inkstoneHasDraft = () => !disposed && !discarded && composing && (busy
     || draft !== (record.note || '')
     || draftStyle.kind !== record.kind
     || (draftStyle.color ?? null) !== (record.color ?? null));

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildAnnotationPlan, buildEditAnnotationPlan, buildRemoveAnnotationPlan, validateSelection, applyChanges, parseAnnotations, projectReadingParagraph } = require('../src/core.cjs');
+const { buildAnnotationPlan, buildEditAnnotationPlan, buildRemoveAnnotationPlan, validateSelection, applyChanges, parseAnnotations, projectReadingParagraph, unprotectedOffsets } = require('../src/core.cjs');
 
 const select = (document, text) => ({ document, from: document.indexOf(text), to: document.indexOf(text) + text.length });
 const planFor = (document, text, options = {}) => buildAnnotationPlan({ ...select(document, text), kind: 'underline', ...options });
@@ -484,4 +484,171 @@ test('HTML-looking text inside a comment or attribute cannot pollute following p
     assert.equal(applyChanges(document, planFor(document, '普通正文').changes), document.replace('普通正文', '<u class="inkstone-underline">普通正文</u>'));
     assert.throws(() => validateSelection(select(document, 'div')), /[\u4e00-\u9fff]/, document);
   }
+});
+
+test('selection validation keeps mixed block and inline protection around existing annotations', () => {
+  for (const newline of ['\n', '\r\n']) {
+    const document = [
+      '\uFEFF---', 'property: hidden-property', '---', '',
+      '> > ~~~~html', 'hidden-fence', '> > ~~~~', '',
+      '`inline-start', 'hidden-code`', '',
+      '$math-start', 'hidden-math$', '',
+      '[label](', 'hidden-destination', ')', '',
+      '<!-- hidden-comment <div> -->',
+      '<img alt="hidden-attribute <div>"> allowed-image',
+      '<div><!-- </div> -->hidden-wrapper</div>', '',
+      '<u class="inkstone-underline">existing</u>[^inkstone-1] allowed-tail &amp;', '',
+      '[^inkstone-1]: hidden-definition',
+    ].join(newline);
+    for (const text of ['allowed-image', 'existing', 'allowed-tail', '&amp;']) {
+      assert.equal(validateSelection(select(document, text)), text, `${JSON.stringify(newline)} ${text}`);
+    }
+    for (const text of ['hidden-property', 'hidden-fence', 'hidden-code', 'hidden-math', 'hidden-destination', 'hidden-comment', 'hidden-attribute', 'hidden-wrapper', 'hidden-definition', '[^inkstone-1]', '&am']) {
+      assert.throws(() => validateSelection(select(document, text)), /[\u4e00-\u9fff]/, `${JSON.stringify(newline)} ${text}`);
+    }
+    const plan = planFor(document, 'allowed-tail');
+    assert.equal(applyChanges(document, plan.changes), document.replace('allowed-tail', '<u class="inkstone-underline">allowed-tail</u>'));
+  }
+});
+
+test('selection validation preserves source-line protection with isolated CRs', () => {
+  for (const [document, text] of [
+    ['```\rhidden\r```\rvisible\n', 'visible'],
+    ['---\rtitle: value\r---\rvisible\n', 'visible'],
+    ['> > ~~~\r> ~~~\rhidden\r> > ~~~\rvisible\n', 'hidden'],
+  ]) assert.equal(validateSelection(select(document, text)), text, document);
+  for (const [document, text] of [
+    ['```\rhidden\r```\rvisible\n', 'hidden'],
+    ['visible\r```\n', 'visible'],
+  ]) assert.throws(() => validateSelection(select(document, text)), /[\u4e00-\u9fff]/, document);
+});
+
+test('repeated annotation checks keep inline code and unmatched backtick protection within a shared paragraph', () => {
+  const mark = text => `<u class="inkstone-underline">${text}</u>`;
+  for (const newline of ['\n', '\r\n']) {
+    const document = mark('first') + ' `hidden-one ' + mark('hidden-mark') + '` '
+      + '``hidden-two ` mismatched`` ' + mark('second') + ' \\`escaped ' + mark('escaped-visible')
+      + ' `unclosed ' + mark('hidden-unclosed') + newline + 'ordinary-after ' + mark('third');
+    assert.deepEqual(parseAnnotations(document).map(record => record.text), ['first', 'second', 'escaped-visible', 'third']);
+    for (const text of ['first', 'second', 'escaped-visible', 'ordinary-after', 'third']) {
+      assert.equal(validateSelection(select(document, text)), text);
+    }
+    for (const text of ['hidden-one', 'hidden-mark', 'hidden-two', 'hidden-unclosed']) {
+      assert.throws(() => validateSelection(select(document, text)), /[\u4e00-\u9fff]/);
+    }
+  }
+});
+
+test('shared paragraph math checks preserve delimiters, escapes and unmatched expressions', () => {
+  const mark = text => `<u class="inkstone-underline">${text}</u>`;
+  for (const [open, close] of [['$', '$'], ['$$', '$$'], ['\\(', '\\)'], ['\\[', '\\]']]) {
+    for (const newline of ['\n', '\r\n']) {
+      const document = mark('first') + ' ' + open + 'hidden-math ' + mark('hidden-mark')
+        + newline + 'hidden-continuation' + close + ' ' + mark('last');
+      assert.deepEqual(parseAnnotations(document).map(record => record.text), ['first', 'last']);
+      for (const text of ['first', 'last']) assert.equal(validateSelection(select(document, text)), text);
+      for (const text of ['hidden-math', 'hidden-mark', 'hidden-continuation']) {
+        assert.throws(() => validateSelection(select(document, text)), /[\u4e00-\u9fff]/);
+      }
+    }
+  }
+  for (const prefix of ['\\$escaped-dollar', '$unclosed-dollar', '\\(unclosed-parenthesis', '\\[unclosed-bracket', '$ spaced-dollar$', '$digit-close$1', '`$code-only$`']) {
+    const document = prefix + ' ' + mark('visible');
+    assert.deepEqual(parseAnnotations(document).map(record => record.text), ['visible'], prefix);
+    assert.equal(validateSelection(select(document, 'visible')), 'visible', prefix);
+  }
+  const separateParagraphs = '$unclosed ' + mark('first') + '\n\ntext$ ' + mark('second');
+  assert.deepEqual(parseAnnotations(separateParagraphs).map(record => record.text), ['first', 'second']);
+  for (const text of ['first', 'second']) assert.equal(validateSelection(select(separateParagraphs, text)), text);
+});
+
+test('same-line annotation checks preserve wiki and footnote boundaries when source lines change', () => {
+  const mark = text => `<u class="inkstone-underline">${text}</u>`;
+  for (const newline of ['\n', '\r\n']) {
+    const document = [
+      mark('first') + ' [[' + mark('hidden-wiki') + ']] [^' + mark('hidden-footnote') + '] ' + mark('same-line'),
+      '    ' + mark('hidden-indent'),
+      '\\[[escaped-wiki]] \\[^escaped-footnote] \\![[' + mark('escaped-embed') + ']] ' + mark('next-line'),
+      '[^definition]: ' + mark('hidden-definition'),
+      mark('last'),
+    ].join(newline);
+    assert.deepEqual(parseAnnotations(document).map(record => record.text), ['first', 'same-line', 'escaped-embed', 'next-line', 'last']);
+    for (const text of ['first', 'same-line', 'escaped-wiki', 'escaped-footnote', 'escaped-embed', 'next-line', 'last']) {
+      assert.equal(validateSelection(select(document, text)), text);
+    }
+    for (const text of ['hidden-wiki', 'hidden-footnote', 'hidden-indent', 'hidden-definition']) {
+      assert.throws(() => validateSelection(select(document, text)), /[\u4e00-\u9fff]/);
+    }
+  }
+});
+
+test('protected block errors identify properties, code and math with a usable next step', () => {
+  for (const [document, reason] of [
+    ['---\ntitle: 重点\n---', /笔记属性.*请.*正文/],
+    ['```js\n重点\n```', /代码块.*请.*代码块外/],
+    ['> ~~~\n> 重点\n> ~~~', /代码块.*请.*代码块外/],
+    ['$$\n重点\n$$', /公式块.*请.*公式外/],
+    ['    重点', /缩进代码.*请.*代码块外/],
+    ['前 `重点` 后', /行内代码.*请.*反引号/],
+    ['前 $重点$ 后', /行内公式.*请.*公式/],
+  ]) assert.throws(() => validateSelection(select(document, '重点')), reason, document);
+});
+
+test('HTML selection errors distinguish syntax, comments and unsupported element contents', () => {
+  for (const [document, text, reason] of [
+    ['<span title="重点">正文</span>', '重点', /HTML 标签或属性.*请.*正文/],
+    ['<span>正文</span>', 'span', /HTML 标签或属性.*请.*正文/],
+    ['<span title="重点', '重点', /HTML 标签或属性.*请.*正文/],
+    ['<!-- 重点 --> 正文', '重点', /HTML 注释.*请.*可见/],
+    ['<div>重点</div>', '重点', /HTML 元素内.*请.*HTML 外/],
+    ['<u class="inkstone-underline"><b>重点</b></u>', '重点', /HTML 元素内.*请.*HTML 外/],
+    ['<u class="inkstone-underline">重点', '重点', /HTML 元素内.*请.*HTML 外/],
+  ]) assert.throws(() => validateSelection(select(document, text)), reason, document);
+});
+
+test('link errors point readers away from targets, references and embedded syntax', () => {
+  for (const [document, reason] of [
+    ['[正文](folder/重点.md)', /链接目标或引用标识.*请.*显示文字/],
+    ['[正文][重点]', /链接目标或引用标识.*请.*显示文字/],
+    ['[ref]: https://example.com/重点', /引用定义.*请.*正文/],
+    ['[^ref]: 重点', /引用定义.*请.*正文/],
+    ['<https://example.com/重点>', /自动链接.*请.*链接外/],
+    ['[[重点|别名]]', /内部链接或嵌入.*请.*链接外/],
+    ['正文[^重点]', /脚注引用标识.*请.*编号外/],
+  ]) assert.throws(() => validateSelection(select(document, '重点')), reason, document);
+});
+
+test('batch heading offsets exclude current properties, code, math, HTML and comments while retaining source order', () => {
+  assert.equal(typeof unprotectedOffsets, 'function', 'core provides a batch source protection check');
+  for (const newline of ['\n', '\r\n']) {
+    const document = [
+      '---', '# hidden-property', '---', '', '# visible-atx', '', 'visible-setext', '===', '',
+      '```', '# hidden-code <div>', '```', '', '$$', '# hidden-math <span>', '$$', '',
+      '<div>', '# hidden-html', '</div>', '', '<!--', '# hidden-comment <div>', '-->', '',
+      '# visible-after-html', '', '<img alt="', '# hidden-attribute', '">', '', '# visible-last',
+    ].join(newline);
+    const names = ['visible-last', 'hidden-comment', 'hidden-html', 'visible-atx', 'hidden-code', 'hidden-property', 'visible-setext', 'hidden-math', 'hidden-attribute', 'visible-after-html'];
+    const offsets = Object.freeze(names.map(name => document.indexOf(name)));
+    assert.deepEqual(unprotectedOffsets(document, offsets), ['visible-last', 'visible-atx', 'visible-setext', 'visible-after-html'].map(name => document.indexOf(name)));
+  }
+});
+
+test('batch offset protection skips HTML-looking syntax in code and respects closing or unfinished HTML', () => {
+  assert.equal(typeof unprotectedOffsets, 'function', 'core provides a batch source protection check');
+  for (const [document, allowed] of [
+    ['`<div>`\n\n# visible', true],
+    ['`start\n# hidden-inline-code\nend`', false],
+    ['<div><!-- </div> -->\n# hidden-wrapper\n</div>\n\n# visible', true],
+    ['<!-- <div> -->\n\n# visible', true],
+    ['<br><img src="plain">\n\n# visible', true],
+    ['<div>\n\n# hidden-unclosed', false],
+    ['<div title="\n# hidden-unfinished', false],
+    ['<!--\n# hidden-unclosed-comment', false],
+    ['<!DOCTYPE sample "\n# hidden-declaration\n">', false],
+    ['<?sample "\n# hidden-instruction\n">', false],
+  ]) {
+    const offset = document.indexOf(allowed ? 'visible' : 'hidden');
+    assert.deepEqual(unprotectedOffsets(document, [offset]), allowed ? [offset] : [], document);
+  }
+  assert.deepEqual(unprotectedOffsets('正文', [-1, 2, 1.5]), []);
 });

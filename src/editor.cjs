@@ -13,6 +13,8 @@ function createEditorExtension(plugin) {
   const { editorInfoField, editorLivePreviewField, Notice } = require('obsidian');
   const { Prec, StateField } = require('@codemirror/state');
   const { Decoration, EditorView, WidgetType } = require('@codemirror/view');
+  const t = (source, params = {}) => typeof plugin.t === 'function' ? plugin.t(source, params)
+    : source.replace(/\{(\w+)\}/g, (placeholder, key) => Object.hasOwn(params, key) ? String(params[key]) : placeholder);
   const parsedDocuments = new WeakMap();
 
   class AnnotationWidget extends WidgetType {
@@ -36,14 +38,14 @@ function createEditorExtension(plugin) {
       element.className = `inkstone-live-annotation ${record.kind === 'underline' ? 'inkstone-underline' : `inkstone-highlight inkstone-${record.color}`}`;
       element.textContent = record.text;
       element.setAttribute('role', 'button');
-      element.setAttribute('aria-label', `编辑标注：${record.text}`);
+      element.setAttribute('aria-label', t('编辑标注：{text}', { text: record.text }));
       element.tabIndex = 0;
       if (record.note) element.title = record.note;
       const edit = event => {
         event.preventDefault();
         event.stopPropagation();
         Promise.resolve().then(() => plugin.showAnnotationMenu(record.from, this.context, element, event.type === 'keydown'))
-          .catch(error => new Notice(error.message || '未能打开标注，请重新选择。'));
+          .catch(error => new Notice(t(error.message || '未能打开标注，请重新选择。')));
       };
       element.addEventListener('mousedown', event => event.preventDefault());
       element.addEventListener('click', edit);
