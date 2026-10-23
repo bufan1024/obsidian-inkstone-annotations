@@ -7,7 +7,7 @@ const core = require('../src/core.cjs');
 class MarkdownView {}
 function pluginFixture(text = '<u class="inkstone-underline">宿主原文</u>') {
   const notices = [], openedModals = [], builtMenus = [];
-  const sandbox = { module: { exports: {} }, annotationCore: core, annotationViews: { VIEW_TYPE: 'inkstone-annotations-list' },
+  const sandbox = { module: { exports: {} }, annotationCore: core, annotationExcerpts: require('../src/excerpts.cjs'), annotationViews: { VIEW_TYPE: 'inkstone-annotations-list' },
     annotationMenu: { createAnnotationMenu(options) {
       builtMenus.push(options);
       return { ownerDocument: options.doc, isConnected: true, addEventListener() {}, querySelector() { return null; }, remove() { this.isConnected = false; } };
@@ -486,4 +486,176 @@ test('reactivating the source pane preserves a dirty thought while stale content
   fixture.plugin.handleActiveLeafChange(fixture.view.leaf);
   assert.equal(fixture.plugin.toolbars.size, 0);
   assert.equal(menu.isConnected, false);
+});
+
+test('annotation navigation follows cursor order, reports boundaries and resets in another note', async () => {
+  const fixture = pluginFixture('前言 <u class="inkstone-underline">一</u> 接续 <u class="inkstone-underline">二</u>');
+  let cursor = 0;
+  fixture.view.getMode = () => 'source';
+  fixture.view.editor.getCursor = () => cursor;
+  fixture.view.editor.posToOffset = value => value;
+  const visited = [];
+  fixture.plugin.revealAnnotation = async from => { visited.push(from); cursor = from; };
+  const records = fixture.plugin.getAnnotationContext().records;
+  await fixture.plugin.navigateAnnotation(1);
+  await fixture.plugin.navigateAnnotation(1);
+  await fixture.plugin.navigateAnnotation(1);
+  await fixture.plugin.navigateAnnotation(-1);
+  assert.deepEqual(visited, [records[0].from, records[1].from, records[0].from]);
+  assert.match(fixture.notices.at(-1), /最后/);
+  fixture.view.file = {path:'other.md'};
+  fixture.setText('新笔记');
+  await fixture.plugin.navigateAnnotation(1);
+  assert.match(fixture.notices.at(-1), /没有.*标注/);
+});
+
+test('color aliases are display-only and normalize unsafe whitespace', () => {
+  const fixture = pluginFixture();
+  fixture.plugin.settings.colorLabels = {yellow:'  重点\n结论  ', blue:' ', rose:'a'.repeat(90)};
+  assert.equal(fixture.plugin.annotationLabel({kind:'highlight',color:'yellow'}), '重点 结论');
+  assert.equal(fixture.plugin.annotationLabel({kind:'highlight',color:'blue'}), '蓝色');
+  assert.equal(fixture.plugin.annotationLabel({kind:'highlight',color:'rose'}).length, 40);
+  assert.equal(fixture.plugin.annotationLabel({kind:'underline'}), '下划线');
+});
+
+test('implicit menu dismissal archives only bounded session text, explicit cancel discards it', () => {
+  const fixture = pluginFixture();
+  const options = fixture.openMenu(), doc = fixture.node.ownerDocument;
+  const menu = fixture.plugin.toolbars.get(doc);
+  fixture.node.focus = () => {};
+  menu.inkstoneDiscardDraft = () => { menu.inkstoneGetDraft = () => null; };
+  menu.inkstoneGetDraft = () => ({note:'尚未保存',kind:'highlight',color:'blue',quote:'宿主原文'});
+  fixture.plugin.hideToolbars();
+  const draft = fixture.plugin.sessionDrafts.get('host.md');
+  assert.equal(draft.note, '尚未保存');
+  assert.equal(draft.quote, '宿主原文');
+  assert.equal('snapshot' in draft, false);
+  assert.equal('from' in draft, false);
+  fixture.plugin.toolbars.set(doc, menu);
+  options.onClose();
+  assert.equal(fixture.plugin.sessionDrafts.has('host.md'), false);
+  menu.inkstoneGetDraft = () => ({note:'另一个草稿',quote:'原文'});
+  for (let index = 0; index < 15; index++) {
+    fixture.plugin.toolbarStates.set(doc,{capture:{filePath:`${index}.md`}});
+    fixture.plugin.toolbars.set(doc,menu);
+    fixture.plugin.hideToolbars();
+  }
+  assert.equal(fixture.plugin.sessionDrafts.size,10);
+});
+
+test('manual excerpt collection deduplicates markdown files in selected folders', async () => {
+  const fixture = pluginFixture();
+  const a = {path:'A/a.md',basename:'a',extension:'md'}, b = {path:'b.md',basename:'b',extension:'md'};
+  const folder = {path:'A',children:[a,{path:'A/image.png',extension:'png'}]};
+  assert.deepEqual(Array.from(fixture.plugin.selectedMarkdownFiles([b,folder,a]),file=>file.path),['A/a.md','b.md']);
+  const created = [];
+  fixture.plugin.app.vault = {getAbstractFileByPath:()=>null,cachedRead:async file=>`<u class="inkstone-underline">${file.basename}内容</u>`,create:async(path,text)=>{created.push({path,text});return {path};}};
+  fixture.plugin.app.fileManager = {generateMarkdownLink:(file)=>`[[${file.path}]]`};
+  fixture.plugin.app.workspace.getLeavesOfType = () => [];
+  fixture.plugin.app.workspace.getLeaf = () => ({openFile:async()=>{}});
+  await fixture.plugin.exportSelectedAnnotations([folder,b,a]);
+  assert.equal(created.length,1);
+  assert.equal((created[0].text.match(/> a内容/g)||[]).length,1);
+  assert(created[0].text.includes('[[b.md]]'));
+  assert.match(created[0].text,/快照生成时间/);
+});
+
+test('Escape outside a dirty composer discards its archived session draft', () => {
+  const fixture = pluginFixture();
+  fixture.openMenu();
+  const doc = fixture.node.ownerDocument, menu = fixture.plugin.toolbars.get(doc);
+  let discarded = false;
+  menu.inkstoneGetDraft = () => discarded ? null : {note:'不要保留',quote:'宿主原文'};
+  menu.inkstoneDiscardDraft = () => {discarded = true;};
+  fixture.plugin.sessionDrafts = new Map([['host.md',{note:'旧草稿'}]]);
+  const events = {};
+  fixture.plugin.documents.delete(doc);
+  fixture.plugin.registerDomEvent = (_doc,name,callback) => {events[name]=callback;};
+  fixture.plugin.bindDocument(doc);
+  events.keydown({key:'Escape',target:{closest:()=>null}});
+  assert.equal(fixture.plugin.toolbars.size,0);
+  assert.equal(fixture.plugin.sessionDrafts.has('host.md'),false);
+});
+
+test('excerpt heading context rejects old cache when a heading has become plain text', () => {
+  const fixture = pluginFixture('章节\n\n<u class="inkstone-underline">观点</u>');
+  fixture.plugin.app.metadataCache = {getFileCache:()=>({headings:[{heading:'章节',level:1,position:{start:{offset:0,line:0,col:0}}}]})};
+  fixture.plugin.app.fileManager = {generateMarkdownLink:(_file,_path,subpath)=>`[[host${subpath}]]`};
+  const lines = fixture.plugin.excerptLines(fixture.view.file,fixture.view.getViewData(),'export.md','2026-10-23');
+  assert.equal(lines.some(line=>line.includes('#章节')),false);
+  assert.equal(lines.some(line=>line.includes('位置：')),false);
+});
+
+test('previous annotation from the gap between marks goes toward the preceding mark', async () => {
+  const fixture = pluginFixture('<u class="inkstone-underline">前一条</u>\n\n<u class="inkstone-underline">后一条</u>');
+  const context = fixture.plugin.getAnnotationContext(), visited=[];
+  const nodes=context.records.map((record,index)=>({dataset:{inkstoneFrom:String(record.from)},getBoundingClientRect:()=>index?{top:1100,bottom:1120,height:20}:{top:-40,bottom:-20,height:20}}));
+  nodes.forEach((node,index)=>fixture.plugin.readingTargets.set(node,{...context,from:context.records[index].from}));
+  fixture.view.contentEl.querySelector=()=>({getBoundingClientRect:()=>({top:0,bottom:600})});
+  fixture.view.contentEl.querySelectorAll=()=>nodes;
+  fixture.plugin.revealAnnotation=async from=>visited.push(from);
+  await fixture.plugin.navigateAnnotation(-1);
+  assert.deepEqual(visited,[context.records[0].from]);
+});
+
+test('excerpt heading context rejects a cached heading moved inside a fenced block', () => {
+  const fixture=pluginFixture('```\n# 章节\n```\n\n<u class="inkstone-underline">正文</u>');
+  fixture.plugin.app.metadataCache={getFileCache:()=>({headings:[{heading:'章节',level:1,position:{start:{offset:4,line:1,col:0}}}]})};
+  fixture.plugin.app.fileManager={generateMarkdownLink:(_file,_path,subpath)=>`[[host${subpath}]]`};
+  const lines=fixture.plugin.excerptLines(fixture.view.file,fixture.view.getViewData(),'export.md','2026-10-23');
+  assert.equal(lines.some(line=>line.includes('#章节')),false);
+});
+
+test('ordinary Escape after a menu was implicitly closed keeps the recoverable draft', () => {
+  const fixture = pluginFixture(), doc = fixture.node.ownerDocument;
+  fixture.openMenu();
+  const menu = fixture.plugin.toolbars.get(doc);
+  menu.inkstoneGetDraft = () => ({note:'留待恢复',quote:'宿主原文'});
+  menu.inkstoneDiscardDraft = () => {};
+  fixture.plugin.hideToolbars();
+  const events = {};
+  fixture.plugin.documents.delete(doc);
+  fixture.plugin.registerDomEvent = (_doc,name,callback) => {events[name]=callback;};
+  fixture.plugin.bindDocument(doc);
+  events.keydown({key:'Escape',target:{closest:()=>null}});
+  assert.equal(fixture.plugin.sessionDrafts.get('host.md').note,'留待恢复');
+});
+
+test('excerpt heading checks accept current ATX and Setext titles and reject moved HTML or property headings', () => {
+  for (const [snapshot, heading, level, accepted] of [
+    ['# 标题\n\n<u class="inkstone-underline">正文</u>', '标题', 1, true],
+    ['标题\n===\n\n<u class="inkstone-underline">正文</u>', '标题', 1, true],
+    ['标题\n---\n\n<u class="inkstone-underline">正文</u>', '标题', 2, true],
+    ['<div>\n# 标题\n</div>\n\n<u class="inkstone-underline">正文</u>', '标题', 1, false],
+    ['<!--\n# 标题\n-->\n\n<u class="inkstone-underline">正文</u>', '标题', 1, false],
+    ['---\n# 标题\n---\n\n<u class="inkstone-underline">正文</u>', '标题', 1, false],
+    ['$$\n# 标题\n$$\n\n<u class="inkstone-underline">正文</u>', '标题', 1, false],
+    ['# **标题**\n\n<u class="inkstone-underline">正文</u>', '**标题**', 1, false],
+  ]) {
+    const fixture = pluginFixture(snapshot), offset = snapshot.indexOf(snapshot.includes('# ') ? '# ' : heading);
+    fixture.plugin.app.metadataCache = {getFileCache:()=>({headings:[{heading,level,position:{start:{offset}}}]})};
+    fixture.plugin.app.fileManager = {generateMarkdownLink:(_file,_path,subpath)=>`[[host${subpath}]]`};
+    const lines = fixture.plugin.excerptLines(fixture.view.file,snapshot,'export.md','2026-10-23');
+    assert.equal(lines.some(line=>line.startsWith('位置：')),accepted,snapshot);
+  }
+});
+
+test('exporting 2000 current headings avoids a full-document protection scan per heading', () => {
+  const chunks = [], headings = [];
+  let offset = 0;
+  for (let index = 0; index < 2000; index++) {
+    const heading = `章节${index + 1}`;
+    const chunk = `# ${heading}\n\n${'普通阅读正文。'.repeat(10)}\n\n<u class="inkstone-underline">观点${index + 1}</u>\n\n`;
+    headings.push({heading,level:1,position:{start:{offset}}});
+    chunks.push(chunk);
+    offset += chunk.length;
+  }
+  const snapshot = chunks.join(''), fixture = pluginFixture(snapshot);
+  fixture.plugin.app.metadataCache = {getFileCache:()=>({headings})};
+  fixture.plugin.app.fileManager = {generateMarkdownLink:(_file,_path,subpath)=>`[[host${subpath}]]`};
+  const started = process.hrtime.bigint();
+  const lines = fixture.plugin.excerptLines(fixture.view.file,snapshot,'export.md','2026-10-23');
+  const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.equal(lines.filter(line=>line.startsWith('位置：')).length,2000);
+  assert.ok(elapsed < 3000, `2000 headings blocked the synchronous export for ${Math.round(elapsed)} ms`);
 });

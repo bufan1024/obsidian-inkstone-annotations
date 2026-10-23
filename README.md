@@ -12,9 +12,9 @@ Manual download (alternative): [latest release](https://github.com/bufan1024/obs
 
 ![Review annotations and export excerpts](assets/review-export.gif)
 
-Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. Plugin **1.1.8** is published; check the plugin marketplace page for its sync and review status. The latest published companion theme remains **1.3.7**; local theme source **1.3.8 is unreleased**. The annotation interactions below apply to plugin 1.1.8. Requires Obsidian **1.10.6 or later**.
+Underlines, four highlight colors, footnote thoughts, a current-note sidebar, and Markdown excerpt export for Obsidian. Plugin **1.2.0** is published; check the plugin marketplace page for this version's synchronization and review status. Companion theme **1.4.0** is published on [GitHub Releases](https://github.com/bufan1024/obsidian-inkstone/releases/tag/1.4.0); check the theme marketplace page for its sync and review status. Requires Obsidian **1.10.6 or later**.
 
-The interface is currently in Chinese. This guide preserves the actual labels and gives their English meanings.
+Choose **简体中文** or **English** explicitly in the plugin settings. Chinese is the default; the choice does not follow Obsidian's language automatically. This guide includes the default Chinese labels so they remain easy to find.
 
 Everything is processed locally through Obsidian APIs. No network calls, account, or other plugin is required. Live Preview uses CodeMirror bundled with Obsidian. Annotations are saved directly in Markdown and remain compatible with older Inkstone markup. The Inkstone theme is plain CSS and can be used separately.
 
@@ -57,7 +57,7 @@ Use your actual configuration folder if it differs from `.obsidian`. Avoid an ex
 
 For a manual update, quit Obsidian, back up the old files, and replace only the three runtime files above. Keep `data.json`.
 
-The published `Inkstone-Reading-Kit-1.3.7.zip` still contains plugin 1.1.7, not 1.1.8. Obtain the new plugin from its standalone release or the current source checkout.
+The [reading kit](https://github.com/bufan1024/obsidian-inkstone/releases/tag/1.4.0), `Inkstone-Reading-Kit-1.4.0.zip`, also contains plugin **1.2.0** and theme **1.4.0**.
 
 The optional installer belongs to the [upstream theme repository](https://github.com/bufan1024/obsidian-inkstone) or its reading kit, and is not included here. Run the following only from the upstream checkout or extracted kit:
 
@@ -93,11 +93,17 @@ Click a rendered highlight or underline in reading view or Live Preview to open 
 - Choose **「写想法」 (Write a thought)**, or **「编辑想法」 (Edit thought)** when a note exists. The composer stays inside the same popover. Style choices change only the draft until **「保存想法」** or `Cmd+Enter` / `Ctrl+Enter` saves the style and thought together. Keeping the style unchanged preserves the existing mark. Cancel returns to the menu without writing the draft.
 - Choose **「删除标注」 (Delete annotation)** to remove the mark while keeping the text.
 
-An unchanged menu dismisses on outside click or scroll. After you edit thought text or its draft style, outside clicks, scrolling, and reactivating the same source keep the draft open. Cancel or `Esc` explicitly discards it without writing; `Esc` restores the previous keyboard focus. Switching notes or changing the source still prevents stale saves; reopen from the current text. The reading-view context menu and the full annotation command provide the larger panel.
+An unchanged menu dismisses on outside click or scroll. After you edit thought text or its draft style, outside clicks, scrolling, and reactivating the same source keep the draft open. For an existing annotation, Cancel returns to the parent menu; reopening its composer retains the local text and style. Cancel writes nothing and does not archive the canceled state. Explicitly closing the whole menu, pressing `Esc`, or canceling a new selection's composer discards its draft; `Esc` restores the previous keyboard focus. Switching notes or changing the source still prevents stale saves; reopen from the current text. The reading-view context menu and the full annotation command provide the larger panel.
 
 In the editor, placing the cursor inside an annotation's text, or selecting part of that text, then running an annotation command updates the whole mark rather than nesting another mark. Keep the HTML tags themselves out of the selection.
 
 Removing a mark cleans up only Inkstone footnotes that are no longer referenced. Shared definitions needed by other marks remain. Editing the thought for one of several marks sharing a note creates a separate footnote for that mark.
+
+### Recover a thought draft from this session
+
+When switching notes or changing the source closes an edited thought, the plugin temporarily keeps its plain text and the original quote. Run **「墨读：恢复会话想法草稿」 (Restore session thought draft)**, find the file, and choose **「复制草稿」 (Copy draft)**. Return to the note, **select the current source text again**, open Write a thought, paste, and save. The recovery window does not write back to an old selection. Use **「丢弃草稿」 (Discard draft)** when it is no longer needed.
+
+Drafts live only in memory for the current plugin session: at most 10 files, with the latest draft per file. Adding another file beyond that limit removes the oldest entry. Explicitly closing the whole menu, pressing `Esc`, or canceling a new selection's composer discards that draft instead of archiving it. Cancel inside an existing annotation's composer only returns to its parent menu and retains local input as described above. Disabling or restarting the plugin, or quitting Obsidian, clears session drafts; they are not persistent backups.
 
 ## Live Preview and source mode
 
@@ -107,17 +113,27 @@ Live Preview renders the highlight or underline when the cursor and selection ar
 
 Run **「墨读：打开标注侧栏」 (Open annotation sidebar)**, or choose **「更多 → 打开标注侧栏」 (More → Open annotation sidebar)** from the selection toolbar. It lists annotations from the current Markdown note and refreshes when that note changes.
 
-The header shows the note name, folder, and filtered/total annotation counts; hover over the path to see the full location. Quotes and thoughts have separate visual levels. The list scrolls independently while the filter and export controls remain visible. Updates to the same note preserve those controls and their keyboard focus; unchanged content retains the existing list. Action buttons stay visible:
+The header shows the note name, folder, and filtered/total annotation counts; hover over the path to see the full location. Quotes and thoughts have separate visual levels. The list scrolls independently while search, filters, and export remain visible. Updates to the same note preserve those controls and their keyboard focus; unchanged content retains the existing list. Action buttons stay visible:
 
 - **「定位原文」 (Locate source)** jumps to the mark.
 - **「编辑」 (Edit)** opens the [small annotation menu](#edit-or-remove-an-existing-annotation) beside the button. First-screen style choices apply immediately; thought drafts are saved within the popover, and Cancel writes nothing.
 - **「删除」 (Delete)** removes the annotation and keeps the source text.
 
-Filter by a color or underline, or choose **「全部标注」 (All annotations)**. Switching notes updates the list; it is a current-note view, not a vault-wide annotation search.
+Type in the search field to match both excerpt text and thought text, ignoring case and surrounding spaces. Combine this with a color or underline filter and **「仅有想法」 (Thoughts only)**: all active conditions use **AND**, so each visible annotation must satisfy every condition. Switching notes resets the search, style, and thoughts-only filters. Search covers the current note only.
 
-Click **「导出全部」 (Export all)**, choose **「更多 → 导出当前笔记摘录」**, or run **「墨读：导出当前笔记摘录」**. The export button description states the total count. Export always includes **all annotations in the current note**, regardless of the color or underline filter, with their thoughts and a source link.
+Click **「导出全部」 (Export all)**, choose **「更多 → 导出当前笔记摘录」**, or run **「墨读：导出当前笔记摘录」**. The export button description states the total count. Export always includes **all annotations in the current note**, regardless of search, style, or thoughts-only filters. It preserves excerpt text and Markdown thoughts, adding a source link, an ISO snapshot creation time, and the nearest heading path and heading link for each annotation. Entries without an available heading keep the note source.
 
 The new file is created beside the original as `Original note-墨读摘录.md`, then `Original note-墨读摘录-2.md`, and so on if necessary. It opens automatically without overwriting the source or previous exports. An export is a snapshot, not a synchronized view. The sidebar follows the newly opened file; switch back to the original note to continue managing its annotations.
+
+Heading links use Obsidian's link API. **If a note repeats the same heading text, its links reach the first matching heading only.** The exported heading path still describes the annotation's actual section. The plugin does not insert block IDs into the source note to bypass this limitation.
+
+### Collect excerpts from notes or folders
+
+1. Run **「墨读：汇总笔记或文件夹摘录」 (Collect excerpts from notes or folders)** and select a Markdown note or a folder. Folder selection includes Markdown notes in its subfolders.
+2. Alternatively, select one or more notes or folders in the file explorer, right-click, and choose **「汇总墨读摘录」 (Collect Inkstone excerpts)**. Each note is included once, and notes without Inkstone annotations are skipped.
+3. The plugin creates and opens `墨读摘录汇总.md` at the vault root, adding `-2` and further numbers when necessary. Each source keeps its own source link, heading paths, and all annotations and thoughts.
+
+This is a manually generated snapshot. It does not create a vault-wide index, scan continuously, synchronize later edits, or overwrite source notes or previous collections.
 
 See the [recorded sidebar and export demo](https://github.com/bufan1024/obsidian-inkstone/blob/main/README.en.md#edit-from-the-sidebar-and-export-excerpts).
 
@@ -137,11 +153,17 @@ Use Obsidian **Settings → Appearance** for font and font size. The theme suppo
 
 These presets are designed for Inkstone. Enable **Settings → Editor → Readable line length** when using width presets. If you set width or line height in a CSS snippet, choose Follow theme / CSS in the plugin.
 
+Under **Settings → Inkstone Annotations**, select **简体中文** or **English**. Chinese is the explicit default. After changing the language, disable and re-enable the plugin to refresh command names; command IDs and existing shortcut bindings stay the same.
+
+Set custom color names such as “Key idea” or “Check later” under the color-name settings. Clear a field to restore its default. Aliases appear in annotation menus, the sidebar, and exported style labels. They change display names only, leaving saved color classes, HTML, footnotes, and the underlying color filter unchanged.
+
 Run **「墨读：上一屏／下一屏」 (Previous / Next screen)** or use status-bar ↑ / ↓ to scroll by the current content viewport with a small overlap. Reading and editing views are supported; no page-break characters are inserted. Assign shortcuts under Settings → Hotkeys if desired.
+
+Run **「墨读：上一条标注／下一条标注」 (Previous / Next annotation)** to review the current note one annotation at a time. Editing view uses the cursor position; reading view uses the current annotation or visible position. The commands report the first or last boundary and **do not wrap around**. They have no default hotkeys.
 
 ## Commands and undo
 
-The plugin provides 13 commands. Search for **墨读** in the command palette (`Cmd+P` / `Ctrl+P`) to find them. There are no default dedicated hotkeys.
+The plugin provides 17 commands. Search for **墨读**, or **Inkstone** after selecting English, in the command palette (`Cmd+P` / `Ctrl+P`). There are no default dedicated hotkeys. The table uses the default Chinese names.
 
 | Actual command label | Action |
 | --- | --- |
@@ -156,6 +178,10 @@ The plugin provides 13 commands. Search for **墨读** in the command palette (`
 | 墨读：撤销上次标注 | Undo the most recent annotation addition, edit, or removal |
 | 墨读：打开标注侧栏 | Show the current note's annotations |
 | 墨读：导出当前笔记摘录 | Create Markdown with all annotations, thoughts, and a source link |
+| 墨读：上一条标注 | Locate the previous annotation without wrapping; ID `previous-annotation` |
+| 墨读：下一条标注 | Locate the next annotation without wrapping; ID `next-annotation` |
+| 墨读：恢复会话想法草稿 | View and copy a draft kept in this session; ID `restore-thought-draft` |
+| 墨读：汇总笔记或文件夹摘录 | Select sources and generate an excerpt snapshot; ID `collect-excerpts` |
 | 墨读：上一屏 | Scroll to the previous screen with some overlap |
 | 墨读：下一屏 | Scroll to the next screen with some overlap |
 
@@ -190,7 +216,7 @@ Underlines and highlights use HTML, and thoughts use native Obsidian footnotes:
 
 The color classes are `inkstone-yellow`, `inkstone-green`, `inkstone-blue`, and `inkstone-rose`. You can edit markup and footnotes directly in source mode. Older Inkstone formats remain supported.
 
-Select plain text within a single source line, leaving heading, list, and quote prefixes outside the selection. HTML tags and attributes, link destinations, code, math, and frontmatter are protected. Cross-line selections and selections spanning complete Markdown or HTML structures are rejected. If prompted, switch to the editor and select a smaller plain-text portion.
+Select plain text within a single source line, leaving heading, list, and quote prefixes outside the selection. HTML tags, attributes, comments, unsupported HTML contents, link targets and reference identifiers, code, math, and frontmatter are protected. Cross-line selections and selections spanning complete Markdown or HTML structures are rejected. Errors explain the specific reason and how to reselect; switching to the editor does not remove these protections.
 
 Reading view uses Obsidian's source-paragraph information and character mapping to distinguish repeated text. Complex Markdown, unknown HTML, and paragraphs spanning source lines require editor selection. If you switch files, disable the plugin, or change the source while a menu or panel is open, saving is rejected; reopen it from the current text.
 

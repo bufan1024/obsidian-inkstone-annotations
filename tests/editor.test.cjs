@@ -36,13 +36,14 @@ test('all cursors participate and adjacent nonempty selections leave markup rend
 
 function editorFixture() {
   const core = require('../src/core.cjs');
+  const notices = [];
   let parses = 0;
   let sidebarSnapshot = '';
   const annotationCore = { ...core, parseAnnotations: source => { parses += 1; return core.parseAnnotations(source); } };
   const editor = {}, infoField = {}, liveField = {};
   const view = { editor, file: { path: '笔记.md' }, getMode: () => 'preview', getViewData: () => sidebarSnapshot };
   const api = {
-    obsidian: { editorInfoField: infoField, editorLivePreviewField: liveField, Plugin: class {}, Modal: class {}, PluginSettingTab: class {} },
+    obsidian: { editorInfoField: infoField, editorLivePreviewField: liveField, Plugin: class {}, Modal: class {}, PluginSettingTab: class {}, Notice: class { constructor(message) { notices.push(message); } } },
     '@codemirror/state': { Prec: { highest: extension => extension }, StateField: { define: definition => definition } },
     '@codemirror/view': {
       WidgetType: class {},
@@ -55,6 +56,7 @@ function editorFixture() {
     module: pluginModule,
     require: name => { assert(name in api); return api[name]; },
     annotationCore,
+    annotationI18n: require('../src/i18n.cjs'),
   });
   const plugin = Object.create(pluginModule.exports.prototype);
   plugin.app = { workspace: { getLeavesOfType: () => [{ view }] } };
@@ -68,7 +70,7 @@ function editorFixture() {
   });
   const extension = module.exports.createEditorExtension(plugin);
   return {
-    extension, view,
+    extension, view, plugin, notices,
     sidebarContext(snapshot) { sidebarSnapshot = snapshot; return plugin.getAnnotationContext(); },
     get parses() { return parses; },
     state(doc, cursor) {
@@ -76,6 +78,36 @@ function editorFixture() {
     },
   };
 }
+
+function widgetDom(widget) {
+  const attributes = {}, listeners = {};
+  const element = { setAttribute: (name, value) => { attributes[name] = value; }, addEventListener: (name, listener) => { listeners[name] = listener; } };
+  widget.toDOM({ dom: { ownerDocument: { createElement: () => element } } });
+  return { element, attributes, listeners };
+}
+
+test('English Live Preview labels translate the action while keeping quote and thought text literal', () => {
+  const fixture = editorFixture();
+  fixture.plugin.settings = { language: 'en' };
+  const source = '<u class="inkstone-underline">写想法 {text} &amp; 原文</u>[^inkstone-1]\n\n[^inkstone-1]: 保存想法';
+  const rendered = fixture.extension.create(fixture.state({ toString: () => source }, source.length));
+  const { element, attributes } = widgetDom(rendered[0].spec.widget);
+  assert.equal(attributes['aria-label'], 'Edit annotation: 写想法 {text} & 原文');
+  assert.equal(element.textContent, '写想法 {text} & 原文');
+  assert.equal(element.title, '保存想法');
+});
+
+test('English Live Preview reports a translated annotation-open failure', async () => {
+  const fixture = editorFixture();
+  fixture.plugin.settings = { language: 'en' };
+  fixture.plugin.showAnnotationMenu = () => { throw new Error('未能打开标注，请重新选择。'); };
+  const source = '<u class="inkstone-underline">原文</u> 后文';
+  const rendered = fixture.extension.create(fixture.state({ toString: () => source }, source.length));
+  const { listeners } = widgetDom(rendered[0].spec.widget);
+  listeners.click({ type: 'click', preventDefault() {}, stopPropagation() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(fixture.notices, ['Could not open the annotation. Select it again.']);
+});
 
 test('moving the selection toggles source without rescanning an unchanged document', () => {
   const fixture = editorFixture();

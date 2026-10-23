@@ -15,7 +15,7 @@ function validateRange(document, from, to) {
 }
 
 function isProtectedLine(document, from, context) {
-  if (context) return context.protectedLines[from] === 1;
+  if (context) return context.protectedLines[from] > 0;
   const lineEnd = document.indexOf('\n', from);
   const lines = document.slice(0, lineEnd < 0 ? document.length : lineEnd).split(/\r\n|\n|\r/);
   let frontmatter = lines[0].replace(/^\uFEFF/, '').trim() === '---';
@@ -62,14 +62,14 @@ function buildProtectedLineIndex(document) {
   let math = null;
   let index = 0;
   for (const sourceLine of document.matchAll(/[^\n]*(?:\n|$)/g)) {
-    let protectedLine = false;
+    let protectedLine = 0;
     // isProtectedLine scans to the next LF, so isolated CRs (and the CR in
     // CRLF) make its final subline determine protection for that whole range.
     for (const source of sourceLine[0].replace(/\n$/, '').split('\r')) {
       const quotePrefix = source.match(/^(?:[ \t]*>[ \t]?)+/)?.[0] || '';
       const quoteDepth = (quotePrefix.match(/>/g) || []).length;
       const line = source.slice(quotePrefix.length).trim();
-      protectedLine = frontmatter || fence !== null || math !== null;
+      protectedLine = frontmatter ? 1 : fence !== null ? 2 : math !== null ? 3 : 0;
       if (frontmatter) {
         if (index > 0 && /^(---|\.\.\.)$/.test(line)) frontmatter = false;
       } else if (fence) {
@@ -80,16 +80,16 @@ function buildProtectedLineIndex(document) {
       } else {
         const open = line.match(/^(`{3,}|~{3,})/);
         if (open) {
-          protectedLine = true;
+          protectedLine = 2;
           fence = { marker: open[1], depth: quoteDepth };
         } else if (line.startsWith('$$')) {
-          protectedLine = true;
+          protectedLine = 3;
           math = line.slice(2).includes('$$') ? null : quoteDepth;
         }
       }
       index++;
     }
-    if (protectedLine) protectedLines.fill(1, sourceLine.index, sourceLine.index + sourceLine[0].length);
+    if (protectedLine) protectedLines.fill(protectedLine, sourceLine.index, sourceLine.index + sourceLine[0].length);
   }
   return protectedLines;
 }
@@ -137,20 +137,25 @@ function paragraphRange(document, from, context) {
 }
 
 function insideInlineCode(document, from, to, context) {
-  const { start, end: paragraphEnd } = paragraphRange(document, from, context);
-  const paragraph = document.slice(start, paragraphEnd);
-  const ticks = [...paragraph.matchAll(/`+/g)].filter(tick => !isProtectedLine(document, start + tick.index, context));
-  for (let index = 0; index < ticks.length; index++) {
-    const open = ticks[index];
-    if (isEscaped(paragraph, open.index)) continue;
-    let close = index + 1;
-    while (close < ticks.length && ticks[close][0] !== open[0]) close++;
-    const nextLine = paragraph.indexOf('\n', open.index);
-    const end = close < ticks.length ? ticks[close].index + ticks[close][0].length : nextLine < 0 ? paragraph.length : nextLine;
-    if (from < start + end && to > start + open.index) return true;
-    index = close;
+  const bounds = paragraphRange(document, from, context);
+  if (!bounds.inlineCodeRanges) {
+    const { start, end: paragraphEnd } = bounds;
+    const paragraph = document.slice(start, paragraphEnd);
+    const ticks = [...paragraph.matchAll(/`+/g)].filter(tick => !isProtectedLine(document, start + tick.index, context));
+    const ranges = [];
+    for (let index = 0; index < ticks.length; index++) {
+      const open = ticks[index];
+      if (isEscaped(paragraph, open.index)) continue;
+      let close = index + 1;
+      while (close < ticks.length && ticks[close][0] !== open[0]) close++;
+      const nextLine = paragraph.indexOf('\n', open.index);
+      const end = close < ticks.length ? ticks[close].index + ticks[close][0].length : nextLine < 0 ? paragraph.length : nextLine;
+      ranges.push({ from: start + open.index, to: start + end });
+      index = close;
+    }
+    bounds.inlineCodeRanges = ranges;
   }
-  return false;
+  return overlapsRanges(bounds.inlineCodeRanges, from, to);
 }
 
 function isEscaped(text, offset) {
@@ -163,6 +168,21 @@ function overlaps(from, to, start, end) {
   return from < end && to > start;
 }
 
+function overlapsRanges(ranges, from, to) {
+  return !!overlappingRange(ranges, from, to);
+}
+
+function overlappingRange(ranges, from, to) {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (ranges[middle].to <= from) low = middle + 1;
+    else high = middle;
+  }
+  return low < ranges.length && ranges[low].from < to ? ranges[low] : null;
+}
+
 function validateEntityBoundaries(document, from, to) {
   for (const entity of document.matchAll(/&(?:#(?:[xX][0-9a-fA-F]+|\d+)|[A-Za-z][A-Za-z0-9]+);/g)) {
     const end = entity.index + entity[0].length;
@@ -172,14 +192,14 @@ function validateEntityBoundaries(document, from, to) {
   }
 }
 
-function insideHtmlSyntax(document, from, to) {
+function htmlSyntaxProtection(document, from, to, context) {
   for (let index = 0; index < document.length; index++) {
     if (document[index] !== '<' || isEscaped(document, index)) continue;
-    if (isProtectedLine(document, index) || insideInlineCode(document, index, index + 1)) continue;
+    if (isProtectedLine(document, index, context) || insideInlineCode(document, index, index + 1, context)) continue;
     if (document.startsWith('<!--', index)) {
       const close = document.indexOf('-->', index + 4);
       const end = close < 0 ? document.length : close + 3;
-      if (overlaps(from, to, index, end)) return true;
+      if (overlaps(from, to, index, end)) return 'html-comment';
       index = end - 1;
       continue;
     }
@@ -193,7 +213,7 @@ function insideHtmlSyntax(document, from, to) {
       } else if (character === '"' || character === "'") quote = character;
       else if (character === '>') { end++; break; }
     }
-    if (overlaps(from, to, index, end)) return true;
+    if (overlaps(from, to, index, end)) return isAutolink(document.slice(index, end)) ? 'autolink' : 'html-syntax';
     index = end - 1;
   }
   return false;
@@ -236,55 +256,68 @@ function insideLinkDestination(document, from, to, context) {
   return false;
 }
 
-function insideInlineSyntax(document, from, to, context) {
-  const start = document.lastIndexOf('\n', from - 1) + 1;
-  const nextLine = document.indexOf('\n', from);
-  const line = document.slice(start, nextLine < 0 ? document.length : nextLine);
-  const intersects = (left, right) => overlaps(from, to, start + left, start + right);
-  if (isIndentedCode(document, start, line) || insideLinkDestination(document, from, to, context) || insideInlineMath(document, from, to, context)) return true;
-  if (/^ {0,3}\[[^\]\r\n]+\]:/.test(line)) return true;
-  for (const token of line.matchAll(/!?\[\[[^\r\n]*?(?:\]\]|$)|\[\^[^\]\r\n]*(?:\]|$)/g)) {
-    if (!isEscaped(line, token.index) && intersects(token.index, token.index + token[0].length)) return true;
+function inlineSyntaxProtection(document, from, to, context) {
+  let sourceLine = context?.inlineSyntaxLine;
+  if (!sourceLine || from < sourceLine.from || from > sourceLine.to) {
+    const start = document.lastIndexOf('\n', from - 1) + 1;
+    const nextLine = document.indexOf('\n', from);
+    const end = nextLine < 0 ? document.length : nextLine;
+    const line = document.slice(start, end);
+    const ranges = [];
+    for (const token of line.matchAll(/!?\[\[[^\r\n]*?(?:\]\]|$)|\[\^[^\]\r\n]*(?:\]|$)/g)) {
+      if (!isEscaped(line, token.index)) ranges.push({ from: start + token.index, to: start + token.index + token[0].length, kind: token[0].startsWith('[^') ? 'footnote-reference' : 'wiki-link' });
+    }
+    const protection = isIndentedCode(document, start, line) ? 'indented-code' : /^ {0,3}\[[^\]\r\n]+\]:/.test(line) ? 'reference-definition' : null;
+    sourceLine = { from: start, to: end, ranges, protection };
+    if (context) context.inlineSyntaxLine = sourceLine;
   }
-  return false;
+  if (sourceLine.protection) return sourceLine.protection;
+  if (insideLinkDestination(document, from, to, context)) return 'link-destination';
+  if (insideInlineMath(document, from, to, context)) return 'inline-math';
+  return overlappingRange(sourceLine.ranges, from, to)?.kind || null;
 }
 
 function insideInlineMath(document, from, to, context) {
-  const { start, end } = paragraphRange(document, from, context);
-  const paragraph = document.slice(start, end);
-  for (let index = 0; index < paragraph.length; index++) {
-    if (isEscaped(paragraph, index) || !['$', '\\'].includes(paragraph[index])) continue;
-    if (isProtectedLine(document, start + index, context) || insideInlineCode(document, start + index, start + index + 1, context)) continue;
-    if (paragraph[index] === '$') {
-      const marker = paragraph[index + 1] === '$' ? '$$' : '$';
-      if (/\s/.test(paragraph[index + marker.length] || ' ')) continue;
-      let close = index + marker.length;
-      while ((close = paragraph.indexOf(marker, close)) >= 0) {
-        if (!isEscaped(paragraph, close) && !/\s/.test(paragraph[close - 1]) && !/\d/.test(paragraph[close + marker.length] || '')) break;
-        close += marker.length;
-      }
-      if (close >= 0) {
-        if (overlaps(from, to, start + index, start + close + marker.length)) return true;
-        index = close + marker.length - 1;
-      }
-    } else if (paragraph[index + 1] === '(' || paragraph[index + 1] === '[') {
-      const close = paragraph.indexOf(paragraph[index + 1] === '(' ? '\\)' : '\\]', index + 2);
-      if (close >= 0) {
-        if (overlaps(from, to, start + index, start + close + 2)) return true;
-        index = close + 1;
+  const bounds = paragraphRange(document, from, context);
+  if (!bounds.inlineMathRanges) {
+    const { start, end } = bounds;
+    const paragraph = document.slice(start, end);
+    const ranges = [];
+    for (let index = 0; index < paragraph.length; index++) {
+      if (isEscaped(paragraph, index) || !['$', '\\'].includes(paragraph[index])) continue;
+      if (isProtectedLine(document, start + index, context) || insideInlineCode(document, start + index, start + index + 1, context)) continue;
+      if (paragraph[index] === '$') {
+        const marker = paragraph[index + 1] === '$' ? '$$' : '$';
+        if (/\s/.test(paragraph[index + marker.length] || ' ')) continue;
+        let close = index + marker.length;
+        while ((close = paragraph.indexOf(marker, close)) >= 0) {
+          if (!isEscaped(paragraph, close) && !/\s/.test(paragraph[close - 1]) && !/\d/.test(paragraph[close + marker.length] || '')) break;
+          close += marker.length;
+        }
+        if (close >= 0) {
+          ranges.push({ from: start + index, to: start + close + marker.length });
+          index = close + marker.length - 1;
+        }
+      } else if (paragraph[index + 1] === '(' || paragraph[index + 1] === '[') {
+        const close = paragraph.indexOf(paragraph[index + 1] === '(' ? '\\)' : '\\]', index + 2);
+        if (close >= 0) {
+          ranges.push({ from: start + index, to: start + close + 2 });
+          index = close + 1;
+        }
       }
     }
+    bounds.inlineMathRanges = ranges;
   }
-  return false;
+  return overlapsRanges(bounds.inlineMathRanges, from, to);
 }
 
-function insideUnsupportedHtml(document, from, to) {
+function insideUnsupportedHtml(document, from, to, context) {
   const stack = [];
   const token = /<(?:\/?[A-Za-z]|!|\?)/g;
   let match;
   while ((match = token.exec(document))) {
     if (match.index >= from) break;
-    if (isEscaped(document, match.index) || isProtectedLine(document, match.index) || insideInlineCode(document, match.index, match.index + 1)) continue;
+    if (isEscaped(document, match.index) || isProtectedLine(document, match.index, context) || insideInlineCode(document, match.index, match.index + 1, context)) continue;
     const html = htmlTokenAt(document, match.index);
     if (!html) continue;
     token.lastIndex = html.end;
@@ -301,6 +334,55 @@ function insideUnsupportedHtml(document, from, to) {
   return !annotation || from < annotation.contentFrom || to > annotation.contentTo;
 }
 
+function unprotectedOffsets(document, offsets) {
+  if (typeof document !== 'string') throw new Error('笔记内容必须是文字。');
+  const ordered = [...new Set(offsets.filter(offset => Number.isInteger(offset) && offset >= 0 && offset < document.length))].sort((left, right) => left - right);
+  if (!ordered.length) return [];
+  const context = { protectedLines: buildProtectedLineIndex(document) };
+  const allowed = new Set();
+  const stack = [];
+  const token = /<(?:\/?[A-Za-z]|!|\?)/g;
+  let match = token.exec(document);
+  let htmlEnd = -1;
+  for (const offset of ordered) {
+    while (match && match.index <= offset) {
+      const from = match.index;
+      if (isEscaped(document, from) || isProtectedLine(document, from, context) || insideInlineCode(document, from, from + 1, context) || inlineSyntaxProtection(document, from, from + 1, context)) {
+        match = token.exec(document);
+        continue;
+      }
+      let html = htmlTokenAt(document, from);
+      // Declarations and processing instructions have no element name, but
+      // their quoted attributes can still span a candidate heading.
+      if (!html && /^<![A-Za-z]|^<\?/.test(document.slice(from))) {
+        let quote = null;
+        let end = from + 2;
+        for (; end < document.length; end++) {
+          const character = document[end];
+          if (quote) { if (character === quote) quote = null; }
+          else if (character === '"' || character === "'") quote = character;
+          else if (character === '>') { end++; break; }
+        }
+        html = { end, name: null };
+      }
+      if (html) {
+        htmlEnd = html.end;
+        token.lastIndex = html.end;
+        if (html.name && !isAutolink(html.raw)) {
+          if (html.closing) {
+            const open = stack.lastIndexOf(html.name);
+            if (open >= 0) stack.length = open;
+          } else if (!html.selfClosing && !/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(html.name)) stack.push(html.name);
+        }
+      }
+      match = token.exec(document);
+    }
+    if (offset < htmlEnd || stack.length || isProtectedLine(document, offset, context) || insideInlineCode(document, offset, offset + 1, context) || inlineSyntaxProtection(document, offset, offset + 1, context)) continue;
+    allowed.add(offset);
+  }
+  return offsets.filter(offset => allowed.has(offset));
+}
+
 function validateSelection({ document, from, to }) {
   validateRange(document, from, to);
   validateEntityBoundaries(document, from, to);
@@ -308,9 +390,28 @@ function validateSelection({ document, from, to }) {
   if (!text.trim()) throw new Error('请先选择需要标注的文字。');
   if (/[\r\n]/.test(text)) throw new Error('请只选择同一行中的文字，分段添加标注。');
   if (coversStructurePrefix(document, from)) throw new Error('请只选择正文文字，不要包含标题、列表或引用的格式标记。');
-  if (isProtectedLine(document, from) || insideInlineCode(document, from, to) || insideHtmlSyntax(document, from, to) || insideInlineSyntax(document, from, to) || insideUnsupportedHtml(document, from, to)) {
-    throw new Error('暂不支持在属性、代码或公式块中添加标注。');
-  }
+  const context = { protectedLines: buildProtectedLineIndex(document) };
+  const blockErrors = {
+    1: '选区位于笔记属性（frontmatter）中，请改选正文文字。',
+    2: '选区位于代码块中，请改选代码块外的正文文字。',
+    3: '选区位于公式块中，请改选公式外的正文文字。',
+  };
+  if (isProtectedLine(document, from, context)) throw new Error(blockErrors[context.protectedLines[from]]);
+  if (insideInlineCode(document, from, to, context)) throw new Error('选区包含行内代码，请避开反引号内的内容后重新选择。');
+  const protection = htmlSyntaxProtection(document, from, to, context) || inlineSyntaxProtection(document, from, to, context);
+  const inlineErrors = {
+    'html-comment': '选区位于 HTML 注释中，请改选可见的正文文字。',
+    'html-syntax': '选区包含 HTML 标签或属性，请只选择标签外的正文文字。',
+    autolink: '选区位于自动链接地址中，请改选链接外的正文文字。',
+    'indented-code': '选区位于缩进代码中，请改选代码块外的正文文字。',
+    'reference-definition': '选区位于链接或脚注的引用定义中，请改选正文中的显示文字。',
+    'link-destination': '选区位于链接目标或引用标识中，请改选链接显示文字或链接外的正文。',
+    'inline-math': '选区包含行内公式，请避开公式后重新选择。',
+    'wiki-link': '选区包含内部链接或嵌入内容，请改选链接外的正文文字。',
+    'footnote-reference': '选区包含脚注引用标识，请改选引用编号外的正文文字。',
+  };
+  if (protection) throw new Error(inlineErrors[protection]);
+  if (insideUnsupportedHtml(document, from, to, context)) throw new Error('选区位于暂不支持的 HTML 元素内，请改选 HTML 外的正文文字，或先简化这段 HTML。');
   const markdown = /`|\*\*|__|~~|==|\[\[|\]\]|\[\^|!\[|\[[^\]]*\]\s*\([^)]*\)|<\/?[A-Za-z][^>]*>|<!--|-->|\*[^*\r\n]+\*|_[^_\r\n]+_/;
   if (markdown.test(text)) throw new Error('选区含有 Markdown 或 HTML 格式，请只选择普通文字。');
   return text;
@@ -468,7 +569,7 @@ function parseAnnotations(document) {
   let match;
   while ((match = token.exec(document))) {
     const from = match.index;
-    if (isEscaped(document, from) || isProtectedLine(document, from, context) || insideInlineCode(document, from, from + 1, context) || insideInlineSyntax(document, from, from + 1, context)) continue;
+    if (isEscaped(document, from) || isProtectedLine(document, from, context) || insideInlineCode(document, from, from + 1, context) || inlineSyntaxProtection(document, from, from + 1, context)) continue;
     const html = htmlTokenAt(document, from);
     if (!html) continue;
     token.lastIndex = html.end;
@@ -663,4 +764,4 @@ function applyChanges(document, changes) {
   return sorted.reduceRight((text, change) => text.slice(0, change.from) + change.text + text.slice(change.to), document);
 }
 
-module.exports = { buildAnnotationPlan, buildEditAnnotationPlan, buildRemoveAnnotationPlan, validateSelection, applyChanges, parseAnnotations, projectReadingParagraph };
+module.exports = { buildAnnotationPlan, buildEditAnnotationPlan, buildRemoveAnnotationPlan, validateSelection, applyChanges, parseAnnotations, projectReadingParagraph, unprotectedOffsets };

@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, Modal, Setting, Notice, Menu, MarkdownView, PluginSettingTab, Scope, setIcon } = require('obsidian');
+const { Plugin, Modal, Setting, Notice, Menu, MarkdownView, PluginSettingTab, FuzzySuggestModal, Scope, setIcon } = require('obsidian');
 const { buildAnnotationPlan, buildEditAnnotationPlan, buildRemoveAnnotationPlan, parseAnnotations, projectReadingParagraph, validateSelection, applyChanges } = annotationCore;
 const PALETTE = [['yellow', '黄色'], ['green', '绿色'], ['blue', '蓝色'], ['rose', '粉色']];
 const READING_PROPERTIES = ['--inkstone-line-height', '--inkstone-line-width'];
@@ -18,13 +18,14 @@ class AnnotationModal extends Modal {
     this.focusFrame = null;
   }
   onOpen() {
+    const t = (source, params) => this.plugin.t(source, params);
     this.plugin.modals.add(this);
     this.modalEl.addClass('inkstone-annotation-modal');
-    this.contentEl.createEl('h2', { text: this.capture.annotation ? '编辑标注' : '标注与想法' });
-    this.contentEl.createEl('p', { cls: 'inkstone-dialog-description', text: '选择一种标记，可附加想法。点击标记旁的脚注编号即可查看想法。' });
+    this.contentEl.createEl('h2', { text: t(this.capture.annotation ? '编辑标注' : '标注与想法') });
+    this.contentEl.createEl('p', { cls: 'inkstone-dialog-description', text: t('选择一种标记，可附加想法。点击标记旁的脚注编号即可查看想法。') });
     const selected = this.capture.annotation?.text || this.capture.snapshot.slice(this.capture.from, this.capture.to);
     this.contentEl.createEl('blockquote', { cls: 'inkstone-selection-preview', text: Array.from(selected).slice(0, 200).join('') + (Array.from(selected).length > 200 ? '…' : '') });
-    const choices = this.contentEl.createDiv({ cls: 'inkstone-annotation-choices', attr: { 'aria-label': '标注样式', role: 'group' } });
+    const choices = this.contentEl.createDiv({ cls: 'inkstone-annotation-choices', attr: { 'aria-label': t('标注样式'), role: 'group' } });
     this.choiceButtons = [];
     const addChoice = (kind, color, label) => {
       const button = choices.createEl('button', { cls: 'inkstone-annotation-choice', attr: { type: 'button', 'aria-label': label } });
@@ -33,27 +34,27 @@ class AnnotationModal extends Modal {
       this.choiceButtons.push({ button, kind, color });
       button.addEventListener('click', () => { this.kind = kind; this.color = color; this.refreshChoices(); });
     };
-    for (const [color, label] of PALETTE) addChoice('highlight', color, label);
-    addChoice('underline', 'yellow', '下划线');
+    for (const [color] of PALETTE) addChoice('highlight', color, this.plugin.annotationLabel({kind: 'highlight', color}));
+    addChoice('underline', 'yellow', t('下划线'));
     this.refreshChoices();
-    new Setting(this.contentEl).setName('想法').setDesc('可选，想法以脚注形式保存在当前笔记的文末。')
+    new Setting(this.contentEl).setName(t('想法')).setDesc(t('可选，想法以脚注形式保存在当前笔记的文末。'))
       .addTextArea(input => {
-        input.setValue(this.note).setPlaceholder('写下你的想法…').onChange(value => { this.note = value; });
-        input.inputEl.setAttribute('aria-label', '想法内容');
+        input.setValue(this.note).setPlaceholder(t('写下你的想法…')).onChange(value => { this.note = value; });
+        input.inputEl.setAttribute('aria-label', t('想法内容'));
         this.noteInput = input.inputEl;
       });
-    new Setting(this.contentEl).setName('墨水屏显示').setDesc('使用灰底和不同线型区分颜色。')
+    new Setting(this.contentEl).setName(t('墨水屏显示')).setDesc(t('使用灰底和不同线型区分颜色。'))
       .addToggle(toggle => toggle.setValue(this.plugin.settings.monochrome).onChange(value => this.plugin.setMonochrome(value)));
     this.errorEl = this.contentEl.createDiv({ cls: 'inkstone-annotation-error', attr: { role: 'alert' } });
     const actions = this.contentEl.createDiv({ cls: 'inkstone-annotation-actions' });
     if (this.capture.annotation) {
-      const remove = actions.createEl('button', { text: '删除标注', cls: 'inkstone-remove-annotation', attr: { type: 'button' } });
+      const remove = actions.createEl('button', { text: t('删除标注'), cls: 'inkstone-remove-annotation', attr: { type: 'button' } });
       remove.addEventListener('click', () => this.perform(() => this.plugin.removeAnnotation(this.capture.annotation.from, this.capture)));
     }
-    actions.createEl('button', { text: '取消', attr: { type: 'button' } }).addEventListener('click', () => this.close());
-    this.saveButton = actions.createEl('button', { text: '保存标注', cls: 'mod-cta', attr: { type: 'button' } });
+    actions.createEl('button', { text: t('取消'), attr: { type: 'button' } }).addEventListener('click', () => this.close());
+    this.saveButton = actions.createEl('button', { text: t('保存标注'), cls: 'mod-cta', attr: { type: 'button' } });
     this.saveButton.addEventListener('click', () => this.submit());
-    this.contentEl.createEl('p', { cls: 'inkstone-dialog-hint', text: '可在命令面板中使用「墨读：撤销上次标注」。编辑视图也可使用系统撤销。' });
+    this.contentEl.createEl('p', { cls: 'inkstone-dialog-hint', text: t('可在命令面板中使用「墨读：撤销上次标注」。编辑视图也可使用系统撤销。') });
     this.scope.register(['Mod'], 'Enter', event => { event.preventDefault(); void this.submit(); return false; });
     if (this.focusNote) {
       this.focusFrame = this.contentEl.ownerDocument.defaultView.requestAnimationFrame(() => {
@@ -75,7 +76,7 @@ class AnnotationModal extends Modal {
     this.saveButton.disabled = true;
     this.errorEl.setText('');
     try { await work(); this.close(); }
-    catch (error) { this.errorEl.setText(error.message || '未能保存标注，请重新选择文字。'); }
+    catch (error) { this.errorEl.setText(this.plugin.t(error.message || '未能保存标注，请重新选择文字。')); }
     finally { this.busy = false; this.saveButton.disabled = false; }
   }
   submit() { return this.perform(() => this.plugin.commit(this.capture, { kind: this.kind, color: this.color, note: this.note })); }
@@ -85,28 +86,71 @@ class AnnotationModal extends Modal {
   }
 }
 
+class ThoughtDraftModal extends Modal {
+  constructor(plugin) { super(plugin.app); this.plugin = plugin; }
+  onOpen() {
+    const { plugin } = this;
+    plugin.modals.add(this);
+    this.modalEl.addClass('inkstone-thought-drafts');
+    this.modalEl.addClass('inkstone-annotation-modal');
+    this.contentEl.createEl('h2', {text: plugin.t('会话想法草稿')});
+    this.contentEl.createEl('p', {text: plugin.t('草稿仅保留在本次会话中。复制后请重新选择原文，再保存想法。')});
+    for (const [filePath, draft] of plugin.sessionDrafts) {
+      this.contentEl.createEl('h3', {text: filePath});
+      this.contentEl.createEl('blockquote', {text: draft.quote});
+      const input = this.contentEl.createEl('textarea', {attr: {'aria-label': plugin.t('想法内容')}});
+      input.value = draft.note;
+      input.addEventListener('input', () => { draft.note = input.value; });
+      new Setting(this.contentEl).addButton(button => button.setButtonText(plugin.t('复制草稿')).onClick(async () => {
+        try { await this.contentEl.ownerDocument.defaultView.navigator.clipboard.writeText(input.value); new Notice(plugin.t('已复制想法草稿。')); }
+        catch { new Notice(plugin.t('复制失败，请选中文字手动复制。')); }
+      })).addButton(button => button.setButtonText(plugin.t('丢弃草稿')).onClick(() => { plugin.sessionDrafts.delete(filePath); this.contentEl.empty(); this.onOpen(); }));
+    }
+  }
+  onClose() { this.plugin.modals.delete(this); this.contentEl.empty(); }
+}
+class ExcerptSourceModal extends (FuzzySuggestModal || Modal) {
+  constructor(plugin) { super(plugin.app); this.plugin = plugin; }
+  getItems() { return this.app.vault.getAllLoadedFiles().filter(file => Array.isArray(file.children) || file.extension === 'md'); }
+  getItemText(file) { return file.path; }
+  onChooseItem(file) { void this.plugin.exportSelectedAnnotations([file]); }
+}
+
 class AnnotationSettings extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
   display() {
     const plugin = this.plugin;
+    const t = (source, params) => plugin.t ? plugin.t(source, params) : source;
     this.containerEl.empty();
-    new Setting(this.containerEl).setName('墨读阅读与标注').setHeading();
-    new Setting(this.containerEl).setName('墨水屏显示').setDesc('使用灰底及实线、双线、点线、虚线。')
+    new Setting(this.containerEl).setName(t('墨读阅读与标注')).setHeading();
+    new Setting(this.containerEl).setName(t('墨水屏显示')).setDesc(t('使用灰底及实线、双线、点线、虚线。'))
       .addToggle(toggle => toggle.setValue(plugin.settings.monochrome).onChange(value => plugin.setMonochrome(value)));
-    new Setting(this.containerEl).setName('快捷标注条').setDesc('选中文字后显示划线和写想法操作，支持触控。')
+    new Setting(this.containerEl).setName(t('快捷标注条')).setDesc(t('选中文字后显示划线和写想法操作，支持触控。'))
       .addToggle(toggle => toggle.setValue(plugin.settings.toolbar).onChange(async value => {
         plugin.settings.toolbar = value; plugin.hideToolbars(); await plugin.saveData(plugin.settings);
       }));
-    new Setting(this.containerEl).setName('阅读排版').setHeading();
-    this.containerEl.createEl('p', { cls: 'inkstone-dialog-description', text: '字号与字体使用「设置 → 外观」中的原生控制。下列预设用于 Inkstone 主题。' });
-    new Setting(this.containerEl).setName('阅读行高').addDropdown(dropdown => dropdown
-      .addOptions({ '': '跟随主题 / CSS', '1.5': '紧凑 · 1.5', '1.75': '舒适 · 1.75', '2': '宽松 · 2.0' })
+    new Setting(this.containerEl).setName('界面语言 / Interface language').setDesc(t('更改后重新启用插件，以更新命令名称。'))
+      .addDropdown(dropdown => dropdown.addOptions({zh: t('简体中文'), en: 'English'}).setValue(plugin.settings.language || 'zh').onChange(async value => {
+        plugin.settings.language = value; await plugin.saveData(plugin.settings); plugin.hideToolbars(); this.display();
+        plugin.app.workspace.getLeavesOfType(annotationViews.VIEW_TYPE).forEach(leaf => leaf.view.render?.());
+      }));
+    new Setting(this.containerEl).setName(t('颜色含义')).setDesc(t('只修改显示名称，不改变颜色、正文或标注格式。'));
+    for (const [color, label] of PALETTE) new Setting(this.containerEl).setName(t(label)).addText(input => input
+      .setValue(plugin.settings.colorLabels?.[color] || '').setPlaceholder(t(label)).onChange(async value => {
+        plugin.settings.colorLabels ||= {}; plugin.settings.colorLabels[color] = plugin.cleanColorLabel(value);
+        await plugin.saveData(plugin.settings);
+        plugin.app.workspace.getLeavesOfType(annotationViews.VIEW_TYPE).forEach(leaf => leaf.view.render?.());
+      }));
+    new Setting(this.containerEl).setName(t('阅读排版')).setHeading();
+    this.containerEl.createEl('p', { cls: 'inkstone-dialog-description', text: t('字号与字体使用「设置 → 外观」中的原生控制。下列预设用于 Inkstone 主题。') });
+    new Setting(this.containerEl).setName(t('阅读行高')).addDropdown(dropdown => dropdown
+      .addOptions({ '': t('跟随主题 / CSS'), '1.5': t('紧凑 · 1.5'), '1.75': t('舒适 · 1.75'), '2': t('宽松 · 2.0') })
       .setValue(plugin.settings.readingLineHeight || '').onChange(value => plugin.setReadingPreference('readingLineHeight', value)));
-    new Setting(this.containerEl).setName('阅读行宽').addDropdown(dropdown => dropdown
-      .addOptions({ '': '跟随主题 / CSS', '32em': '窄 · 32em', '40em': '标准 · 40em', '48em': '宽 · 48em' })
+    new Setting(this.containerEl).setName(t('阅读行宽')).addDropdown(dropdown => dropdown
+      .addOptions({ '': t('跟随主题 / CSS'), '32em': t('窄 · 32em'), '40em': t('标准 · 40em'), '48em': t('宽 · 48em') })
       .setValue(plugin.settings.readingLineWidth || '').onChange(value => plugin.setReadingPreference('readingLineWidth', value)));
-    new Setting(this.containerEl).setName('恢复阅读预设').setDesc('恢复主题或 CSS 设置，保留原生字号与字体。')
-      .addButton(button => button.setButtonText('恢复默认').onClick(async () => {
+    new Setting(this.containerEl).setName(t('恢复阅读预设')).setDesc(t('恢复主题或 CSS 设置，保留原生字号与字体。'))
+      .addButton(button => button.setButtonText(t('恢复默认')).onClick(async () => {
         plugin.settings.readingLineHeight = ''; plugin.settings.readingLineWidth = '';
         plugin.applyReadingPreferences(); await plugin.saveData(plugin.settings); this.display();
       }));
@@ -115,19 +159,22 @@ class AnnotationSettings extends PluginSettingTab {
 
 module.exports = class InkstoneAnnotations extends Plugin {
   async onload() {
+    const t = (source, params) => this.t(source, params);
     const saved = await this.loadData() || {};
     this.settings = {
       monochrome: Boolean(saved.monochrome), toolbar: saved.toolbar !== false,
       lastKind: saved.lastKind === 'underline' ? 'underline' : 'highlight',
       lastColor: PALETTE.some(([color]) => color === saved.lastColor) ? saved.lastColor : 'yellow',
       readingLineHeight: ['1.5', '1.75', '2'].includes(saved.readingLineHeight) ? saved.readingLineHeight : '',
+      language: saved.language === 'en' ? 'en' : 'zh',
+      colorLabels: Object.fromEntries(PALETTE.map(([color]) => [color, this.cleanColorLabel(saved.colorLabels?.[color])])),
       readingLineWidth: ['32em', '40em', '48em'].includes(saved.readingLineWidth) ? saved.readingLineWidth : ''
     };
     this.active = true;
     this.modals = new Set(); this.documents = new Set(); this.sections = new WeakMap();
     this.readingTargets = new WeakMap(); this.readingRefreshes = new WeakMap(); this.recordCache = new Map();
     this.toolbars = new Map(); this.toolbarStates = new WeakMap(); this.toolbarTimers = new Map(); this.readingOriginals = new Map();
-    this.lastAction = null; this.lastMarkdownView = null;
+    this.lastAction = null; this.lastMarkdownView = null; this.sessionDrafts = new Map();
     this.registerView(annotationViews.VIEW_TYPE, leaf => new (annotationViews.createSidebarClass(this))(leaf));
     this.registerEditorExtension(annotationEditor.createEditorExtension(this));
     this.registerMarkdownPostProcessor((element, context) => this.processReadingSection(element, context));
@@ -145,17 +192,21 @@ module.exports = class InkstoneAnnotations extends Plugin {
       this.hideToolbars(); this.scheduleToolbar(this.currentDocument());
     }));
     this.addSettingTab(new AnnotationSettings(this.app, this));
-    this.addRibbonIcon('highlighter', '墨读：标注与想法', () => this.openAnnotation());
-    this.addCommand({ id: 'annotate', name: '墨读：标注与想法', callback: () => this.openAnnotation() });
-    this.addCommand({ id: 'underline', name: '墨读：添加下划线', callback: () => this.quickUnderline() });
-    this.addCommand({ id: 'add-note', name: '墨读：写想法', callback: () => this.writeThought() });
-    for (const [color, label] of PALETTE) this.addCommand({ id: `highlight-${color}`, name: `墨读：${label}高亮`, callback: () => this.quickHighlight(color) });
-    this.addCommand({ id: 'toggle-monochrome', name: '墨读：切换彩色／灰阶标注', callback: () => this.setMonochrome(!this.settings.monochrome) });
-    this.addCommand({ id: 'show-annotations', name: '墨读：打开标注侧栏', callback: () => this.showAnnotations() });
-    this.addCommand({ id: 'export-annotations', name: '墨读：导出当前笔记摘录', callback: () => this.exportAnnotations() });
-    this.addCommand({ id: 'next-page', name: '墨读：下一屏', callback: () => this.turnPage(1) });
-    this.addCommand({ id: 'previous-page', name: '墨读：上一屏', callback: () => this.turnPage(-1) });
-    this.addCommand({ id: 'undo-annotation', name: '墨读：撤销上次标注', checkCallback: checking => {
+    this.addRibbonIcon('highlighter', t('墨读：标注与想法'), () => this.openAnnotation());
+    this.addCommand({ id: 'annotate', name: t('墨读：标注与想法'), callback: () => this.openAnnotation() });
+    this.addCommand({ id: 'underline', name: t('墨读：添加下划线'), callback: () => this.quickUnderline() });
+    this.addCommand({ id: 'add-note', name: t('墨读：写想法'), callback: () => this.writeThought() });
+    for (const [color, label] of PALETTE) this.addCommand({ id: `highlight-${color}`, name: t('墨读：{label}高亮', {label: t(label)}), callback: () => this.quickHighlight(color) });
+    this.addCommand({ id: 'toggle-monochrome', name: t('墨读：切换彩色／灰阶标注'), callback: () => this.setMonochrome(!this.settings.monochrome) });
+    this.addCommand({ id: 'show-annotations', name: t('墨读：打开标注侧栏'), callback: () => this.showAnnotations() });
+    this.addCommand({ id: 'export-annotations', name: t('墨读：导出当前笔记摘录'), callback: () => this.exportAnnotations() });
+    this.addCommand({ id: 'next-annotation', name: this.t('墨读：下一条标注'), callback: () => this.navigateAnnotation(1) });
+    this.addCommand({ id: 'previous-annotation', name: this.t('墨读：上一条标注'), callback: () => this.navigateAnnotation(-1) });
+    this.addCommand({ id: 'restore-thought-draft', name: this.t('墨读：恢复会话想法草稿'), callback: () => this.restoreThoughtDraft() });
+    this.addCommand({ id: 'collect-excerpts', name: this.t('墨读：汇总笔记或文件夹摘录'), callback: () => this.chooseExcerptSource() });
+    this.addCommand({ id: 'next-page', name: t('墨读：下一屏'), callback: () => this.turnPage(1) });
+    this.addCommand({ id: 'previous-page', name: t('墨读：上一屏'), callback: () => this.turnPage(-1) });
+    this.addCommand({ id: 'undo-annotation', name: t('墨读：撤销上次标注'), checkCallback: checking => {
       const available = !!this.lastAction;
       if (!checking && available) void this.undoAnnotation();
       return available;
@@ -164,18 +215,23 @@ module.exports = class InkstoneAnnotations extends Plugin {
       let capture;
       try { capture = this.captureEditor(editor, info); } catch { return; }
       menu.addSeparator();
-      menu.addItem(item => item.setTitle(capture.annotation ? '墨读：编辑标注…' : '墨读：标注与想法…').setIcon('highlighter').onClick(() => this.openAnnotation(capture)));
-      menu.addItem(item => item.setTitle('墨读：添加下划线').setIcon('underline').onClick(() => this.quickUnderline(capture)));
+      menu.addItem(item => item.setTitle(t(capture.annotation ? '墨读：编辑标注…' : '墨读：标注与想法…')).setIcon('highlighter').onClick(() => this.openAnnotation(capture)));
+      menu.addItem(item => item.setTitle(t('墨读：添加下划线')).setIcon('underline').onClick(() => this.quickUnderline(capture)));
+    }));
+    for (const event of ['file-menu', 'files-menu']) this.registerEvent(this.app.workspace.on(event, (menu, selected) => {
+      const files = Array.isArray(selected) ? selected : [selected];
+      if (files.some(file => file?.extension === 'md' || Array.isArray(file?.children))) menu.addItem(item => item.setTitle(this.t('汇总墨读摘录')).setIcon('file-output').onClick(() => this.exportSelectedAnnotations(files)));
     }));
     const status = this.addStatusBarItem();
     status.addClass('inkstone-reading-navigation');
     for (const [direction, label, text] of [[-1, '上一屏', '↑'], [1, '下一屏', '↓']]) {
-      const button = status.createEl('button', { text, attr: { 'aria-label': `墨读：${label}`, title: `墨读：${label}`, type: 'button' } });
+      const button = status.createEl('button', { text, attr: { 'aria-label': t(`墨读：${label}`), title: t(`墨读：${label}`), type: 'button' } });
       button.addEventListener('click', () => this.turnPage(direction));
     }
   }
   onunload() {
     this.active = false;
+    this.sessionDrafts?.clear();
     for (const modal of [...this.modals]) modal.close();
     this.hideToolbars();
     for (const [doc, timer] of this.toolbarTimers) doc.defaultView.clearTimeout(timer);
@@ -249,7 +305,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
         this.readingTargets.set(node, { filePath: context.sourcePath, snapshot: info.text, from: record.from, text: record.text });
         node.dataset.inkstoneFrom = String(record.from);
         node.setAttribute('tabindex', '0'); node.setAttribute('role', 'button');
-        node.setAttribute('aria-label', `编辑标注：${record.text}`);
+        node.setAttribute('aria-label', this.t('编辑标注：{text}', {text: record.text}));
       }
     });
   }
@@ -292,21 +348,21 @@ module.exports = class InkstoneAnnotations extends Plugin {
       const mark = event.target.closest?.('[data-inkstone-from]');
       if (mark) {
         let context;
-        try { context = this.readingAnnotationContext(mark, view); } catch (error) { new Notice(error.message); return; }
+        try { context = this.readingAnnotationContext(mark, view); } catch (error) { new Notice(this.t(error.message)); return; }
         event.preventDefault(); event.stopPropagation();
         const menu = new Menu();
-        menu.addItem(item => item.setTitle('墨读：编辑标注…').setIcon('highlighter').onClick(() => this.editAnnotation(Number(mark.dataset.inkstoneFrom), context)));
-        menu.addItem(item => item.setTitle('墨读：删除标注').setIcon('eraser').onClick(() => this.removeAnnotation(Number(mark.dataset.inkstoneFrom), context)));
+        menu.addItem(item => item.setTitle(this.t('墨读：编辑标注…')).setIcon('highlighter').onClick(() => this.editAnnotation(Number(mark.dataset.inkstoneFrom), context)));
+        menu.addItem(item => item.setTitle(this.t('墨读：删除标注')).setIcon('eraser').onClick(() => this.removeAnnotation(Number(mark.dataset.inkstoneFrom), context)));
         menu.showAtMouseEvent(event); return;
       }
       const selected = doc.getSelection();
       if (!selected || selected.isCollapsed || !view.contentEl.contains(selected.anchorNode) || !view.contentEl.contains(selected.focusNode)) return;
       let capture;
-      try { capture = this.captureReading(view); } catch (error) { new Notice(error.message); return; }
+      try { capture = this.captureReading(view); } catch (error) { new Notice(this.t(error.message)); return; }
       event.preventDefault(); event.stopPropagation(); this.hideToolbars();
       const menu = new Menu();
-      menu.addItem(item => item.setTitle('墨读：标注与想法…').setIcon('highlighter').onClick(() => this.openAnnotation(capture)));
-      menu.addItem(item => item.setTitle('墨读：添加下划线').setIcon('underline').onClick(() => this.quickUnderline(capture)));
+      menu.addItem(item => item.setTitle(this.t('墨读：标注与想法…')).setIcon('highlighter').onClick(() => this.openAnnotation(capture)));
+      menu.addItem(item => item.setTitle(this.t('墨读：添加下划线')).setIcon('underline').onClick(() => this.quickUnderline(capture)));
       menu.showAtMouseEvent(event);
     }, true);
     this.registerDomEvent(doc, 'click', event => {
@@ -315,17 +371,17 @@ module.exports = class InkstoneAnnotations extends Plugin {
       if (mark && view?.getMode() === 'preview' && view.contentEl.contains(mark) && doc.getSelection()?.isCollapsed !== false) {
         event.preventDefault();
         try { this.showAnnotationMenu(Number(mark.dataset.inkstoneFrom), this.readingAnnotationContext(mark, view), mark); }
-        catch (error) { new Notice(error.message); }
+        catch (error) { new Notice(this.t(error.message)); }
       }
     });
     this.registerDomEvent(doc, 'keydown', event => {
       if ((event.key === 'Enter' || event.key === ' ') && event.target.matches?.('[data-inkstone-from]')) {
         event.preventDefault();
         try { this.showAnnotationMenu(Number(event.target.dataset.inkstoneFrom), this.readingAnnotationContext(event.target, this.currentView()), event.target, true); }
-        catch (error) { new Notice(error.message); }
+        catch (error) { new Notice(this.t(error.message)); }
         return;
       }
-      if (event.key === 'Escape') this.dismissToolbar(doc);
+      if (event.key === 'Escape') this.dismissToolbar(doc, true);
       else this.scheduleToolbar(doc);
     });
     for (const name of ['selectionchange', 'pointerup', 'keyup', 'touchend']) this.registerDomEvent(doc, name, () => this.scheduleToolbar(doc));
@@ -361,7 +417,17 @@ module.exports = class InkstoneAnnotations extends Plugin {
     this.toolbarTimers.set(doc, doc.defaultView.setTimeout(() => { this.toolbarTimers.delete(doc); this.showToolbar(doc); }, 120));
   }
   hideToolbars() {
-    for (const toolbar of this.toolbars.values()) { toolbar.inkstoneDispose?.(); toolbar.remove(); }
+    for (const [doc, toolbar] of this.toolbars) {
+      const draft = this.active && toolbar.inkstoneGetDraft?.();
+      const filePath = this.toolbarStates?.get(doc)?.capture.filePath;
+      if (draft && filePath) {
+        this.sessionDrafts ||= new Map();
+        this.sessionDrafts.delete(filePath);
+        this.sessionDrafts.set(filePath, { note: draft.note, quote: draft.quote, kind: draft.kind, color: draft.color });
+        while (this.sessionDrafts.size > 10) this.sessionDrafts.delete(this.sessionDrafts.keys().next().value);
+      }
+      toolbar.inkstoneDispose?.(); toolbar.remove();
+    }
     this.toolbars.clear();
   }
   preserveThoughtDraft(doc) {
@@ -370,7 +436,12 @@ module.exports = class InkstoneAnnotations extends Plugin {
     if (!capture) return false;
     try { this.assertCurrent(capture); return true; } catch { return false; }
   }
-  dismissToolbar(doc) {
+  dismissToolbar(doc, discardDraft = false) {
+    if (discardDraft && this.toolbars.get(doc)?.inkstoneDiscardDraft) {
+      this.toolbars.get(doc).inkstoneDiscardDraft();
+      const filePath = this.toolbarStates.get(doc)?.capture.filePath;
+      if (filePath) this.sessionDrafts?.delete(filePath);
+    }
     const state = this.toolbarStates.get(doc);
     if (state) state.dismissed = true;
     this.hideToolbars();
@@ -389,7 +460,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
   async copySelection(capture, text, doc) {
     this.assertCurrent(capture);
     await doc.defaultView.navigator.clipboard.writeText(text);
-    new Notice('已复制选中文字。');
+    new Notice(this.t('已复制选中文字。'));
   }
   showToolbar(doc) {
     if (this.toolbars.get(doc)?.classList?.contains('inkstone-annotation-menu')) return;
@@ -409,25 +480,25 @@ module.exports = class InkstoneAnnotations extends Plugin {
     const rect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : null;
     const copiedText = capture.reading ? selection.toString() : capture.snapshot.slice(capture.from, capture.to);
     const toolbar = doc.createElement('div'); toolbar.className = 'inkstone-selection-toolbar';
-    toolbar.setAttribute('role', 'toolbar'); toolbar.setAttribute('aria-label', '墨读快捷标注');
+    toolbar.setAttribute('role', 'toolbar'); toolbar.setAttribute('aria-label', this.t('墨读快捷标注'));
     toolbar.addEventListener('pointerdown', event => event.preventDefault());
     toolbar.addEventListener('mousedown', event => event.preventDefault());
     const row = doc.createElement('div'); row.className = 'inkstone-toolbar-actions'; toolbar.appendChild(row);
     const styles = doc.createElement('div'); styles.className = 'inkstone-toolbar-styles'; styles.hidden = true;
-    styles.id = 'inkstone-toolbar-styles'; styles.setAttribute('role', 'group'); styles.setAttribute('aria-label', '划线样式');
+    styles.id = 'inkstone-toolbar-styles'; styles.setAttribute('role', 'group'); styles.setAttribute('aria-label', this.t('划线样式'));
     toolbar.appendChild(styles);
     const run = work => {
       this.dismissToolbar(doc);
-      Promise.resolve().then(() => { this.assertCurrent(capture); return work(); }).catch(error => new Notice(error.message || '操作未完成，请重新选择文字。'));
+      Promise.resolve().then(() => { this.assertCurrent(capture); return work(); }).catch(error => new Notice(this.t(error.message || '操作未完成，请重新选择文字。')));
     };
-    const add = (parent, label, icon, text, work, keepOpen = false) => {
+    const add = (parent, label, icon, text, work, keepOpen = false, literal = false) => {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'inkstone-toolbar-action';
-      button.setAttribute('aria-label', label); button.title = label;
+      button.setAttribute('aria-label', literal ? label : this.t(label)); button.title = literal ? label : this.t(label);
       if (icon) {
         const glyph = doc.createElement('span'); glyph.className = 'inkstone-toolbar-icon'; glyph.setAttribute('aria-hidden', 'true');
         setIcon(glyph, icon); button.appendChild(glyph);
       }
-      if (text) { const caption = doc.createElement('span'); caption.textContent = text; button.appendChild(caption); }
+      if (text) { const caption = doc.createElement('span'); caption.textContent = literal ? text : this.t(text); button.appendChild(caption); }
       button.addEventListener('click', event => {
         event.preventDefault(); event.stopPropagation();
         const anchor = button.getBoundingClientRect();
@@ -448,7 +519,8 @@ module.exports = class InkstoneAnnotations extends Plugin {
     }, true);
     toggle.classList.add('inkstone-toolbar-dropdown'); toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', styles.id);
     for (const [nextColor, label] of PALETTE) {
-      const button = add(styles, label, null, label.replace('色', ''), () => this.commit(capture, { kind: 'highlight', color: nextColor }));
+      const display = this.annotationLabel({kind: 'highlight', color: nextColor});
+      const button = add(styles, display, null, display, () => this.commit(capture, { kind: 'highlight', color: nextColor }), false, true);
       button.classList.add('inkstone-toolbar-style');
       button.setAttribute('aria-pressed', String(kind === 'highlight' && color === nextColor));
       const dot = doc.createElement('span'); dot.className = `inkstone-toolbar-dot inkstone-swatch-${nextColor}`; dot.setAttribute('aria-hidden', 'true');
@@ -459,9 +531,9 @@ module.exports = class InkstoneAnnotations extends Plugin {
     add(row, '写想法', 'message-square', '写想法', () => this.showSelectionIdea(capture, rect, copiedText));
     const more = add(row, '更多', 'ellipsis', '', (_event, anchor) => {
       const menu = new Menu();
-      menu.addItem(item => item.setTitle('打开标注侧栏').setIcon('list').onClick(() => this.showAnnotations()));
-      menu.addItem(item => item.setTitle('导出当前笔记摘录').setIcon('file-output').onClick(() => run(() => this.exportAnnotations())));
-      if (capture.annotation) menu.addItem(item => item.setTitle('删除标注').setIcon('eraser').onClick(() => {
+      menu.addItem(item => item.setTitle(this.t('打开标注侧栏')).setIcon('list').onClick(() => this.showAnnotations()));
+      menu.addItem(item => item.setTitle(this.t('导出当前笔记摘录')).setIcon('file-output').onClick(() => run(() => this.exportAnnotations())));
+      if (capture.annotation) menu.addItem(item => item.setTitle(this.t('删除标注')).setIcon('eraser').onClick(() => {
         this.removeAnnotation(capture.annotation.from, capture).catch(() => {});
       }));
       menu.showAtPosition({ x: anchor.left, y: anchor.bottom + 4 }, doc);
@@ -520,7 +592,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
   capture() { const view = this.currentView(); return view.getMode() === 'preview' ? this.captureReading(view) : this.captureEditor(view.editor, view); }
   openAnnotation(capture = null, kind) {
     try { this.hideToolbars(); new AnnotationModal(this, capture || this.capture(), kind).open(); }
-    catch (error) { new Notice(error.message); }
+    catch (error) { new Notice(this.t(error.message)); }
   }
   showAnnotationMenu(from, context = this.getAnnotationContext(), anchor, focusFirst = false) {
     try {
@@ -533,7 +605,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
       const rect = anchor.getBoundingClientRect();
       const capture = { ...context, editor: context.view.editor, from: annotation.contentFrom, to: annotation.contentTo, annotation, reading: context.view.getMode() === 'preview' };
       this.showAnnotationPopover(capture, annotation, rect, { anchor, focusFirst });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   showSidebarAnnotationMenu(from, context, anchor) {
     try {
@@ -548,14 +620,14 @@ module.exports = class InkstoneAnnotations extends Plugin {
       }
       const capture = { ...context, editor: context.view.editor, from: annotation.contentFrom, to: annotation.contentTo, annotation, reading: context.view.getMode() === 'preview' };
       this.showAnnotationPopover(capture, annotation, anchor.getBoundingClientRect(), { anchor, focusFirst: true });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   showSelectionIdea(capture, rect, text) {
     try {
       this.assertCurrent(capture);
       const record = capture.annotation || { kind: 'underline', text, note: '' };
       this.showAnnotationPopover(capture, record, rect, { startComposer: true });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   writeThought(capture = null) {
     try {
@@ -564,7 +636,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
       const rect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : null;
       const text = capture.annotation?.text || (capture.reading ? selection.toString() : capture.snapshot.slice(capture.from, capture.to));
       this.showSelectionIdea(capture, rect, text);
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   showAnnotationPopover(capture, record, rect, { anchor, focusFirst = false, startComposer = false } = {}) {
     const doc = capture.view.containerEl.ownerDocument;
@@ -579,13 +651,13 @@ module.exports = class InkstoneAnnotations extends Plugin {
         await work();
         this.dismissToolbar(doc);
       } catch (error) {
-        if (!menu.isConnected) new Notice(error.message);
+        if (!menu.isConnected) new Notice(this.t(error.message));
         throw error;
       }
     };
-    const close = () => { this.dismissToolbar(doc); if (anchor?.isConnected) anchor.focus({ preventScroll: true }); };
+    const close = () => { menu.inkstoneDiscardDraft?.(); this.sessionDrafts?.delete(capture.filePath); this.dismissToolbar(doc); if (anchor?.isConnected) anchor.focus({ preventScroll: true }); };
     menu = annotationMenu.createAnnotationMenu({
-      doc, record, startComposer,
+      doc, record, startComposer, t: (source, params) => this.t(source, params), labelForRecord: item => this.annotationLabel(item),
       bindSaveHotkey: save => {
         const scope = new Scope(this.app.scope);
         scope.register(['Mod'], 'Enter', event => {
@@ -621,7 +693,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
       const annotation = this.recordsFor(context.snapshot, context.filePath).find(record => record.from === from);
       if (!annotation) throw new Error('标注已发生变化，请重新选择。');
       this.openAnnotation({ ...context, editor: context.view.editor, from: annotation.contentFrom, to: annotation.contentTo, annotation, reading: context.view.getMode() === 'preview' });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   async removeAnnotation(from, context = this.getAnnotationContext()) {
     try {
@@ -629,15 +701,15 @@ module.exports = class InkstoneAnnotations extends Plugin {
       this.assertCurrent(context);
       const plan = buildRemoveAnnotationPlan({ document: context.snapshot, from });
       await this.applyPlan(context, plan); this.hideToolbars();
-    } catch (error) { new Notice(error.message); throw error; }
+    } catch (error) { new Notice(this.t(error.message)); throw error; }
   }
   async quickUnderline(capture = null) {
     try { await this.commit(capture || this.capture(), { kind: 'underline' }); }
-    catch (error) { new Notice(error.message); }
+    catch (error) { new Notice(this.t(error.message)); }
   }
   async quickHighlight(color) {
     try { await this.commit(this.capture(), { kind: 'highlight', color }); }
-    catch (error) { new Notice(error.message); }
+    catch (error) { new Notice(this.t(error.message)); }
   }
   assertCurrent(capture) {
     if (!this.active) throw new Error('标注插件已关闭。');
@@ -672,6 +744,8 @@ module.exports = class InkstoneAnnotations extends Plugin {
       ? buildEditAnnotationPlan({ document: capture.snapshot, from: capture.annotation.from, ...options })
       : buildAnnotationPlan({ document: capture.snapshot, from: capture.from, to: capture.to, ...options });
     await this.applyPlan(capture, plan);
+    this.toolbars.get(capture.view.containerEl.ownerDocument)?.inkstoneDiscardDraft?.();
+    this.sessionDrafts?.delete(capture.filePath);
     this.settings.lastKind = options.kind === 'highlight' ? 'highlight' : 'underline';
     if (options.color) this.settings.lastColor = options.color;
     this.hideToolbars(); await this.saveData(this.settings);
@@ -691,7 +765,7 @@ module.exports = class InkstoneAnnotations extends Plugin {
       this.readingRefreshes.set(action.view, { filePath: action.filePath, before: action.after, after: action.before });
       this.refreshReadingTargets(action.view, action.before);
       this.lastAction = null;
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   async revealAnnotation(from, context = this.getAnnotationContext()) {
     try {
@@ -709,7 +783,89 @@ module.exports = class InkstoneAnnotations extends Plugin {
         this.assertCurrent(context);
         const pos = editor.offsetToPos(from); editor.setCursor(pos); editor.scrollIntoView({ from: pos, to: pos }, true);
       });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
+  }
+  t(source, params = {}) {
+    if (typeof annotationI18n !== 'undefined') return annotationI18n.translate(this.settings?.language, source, params);
+    return source.replace(/\{(\w+)\}/g, (match, key) => Object.hasOwn(params, key) ? String(params[key]) : match);
+  }
+  cleanColorLabel(value) { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 40) : ''; }
+  annotationLabel(record) {
+    if (record.kind === 'underline') return this.t('下划线');
+    return this.cleanColorLabel(this.settings.colorLabels?.[record.color]) || this.t(PALETTE.find(([color]) => color === record.color)?.[1] || '高亮');
+  }
+  async navigateAnnotation(direction) {
+    try {
+      const context = this.getAnnotationContext();
+      if (!context?.records.length) throw new Error('当前笔记还没有墨读标注。');
+      this.assertCurrent(context);
+      const { view, records } = context;
+      let position;
+      if (view.getMode() !== 'preview') position = view.editor.posToOffset(view.editor.getCursor());
+      else {
+        const focused = view.containerEl.ownerDocument.activeElement;
+        const target = this.readingTargets.get(focused);
+        if (target?.filePath === context.filePath && target.snapshot === context.snapshot) position = target.from;
+        else {
+          const scroller = view.contentEl.querySelector('.markdown-preview-view');
+          const top = scroller?.getBoundingClientRect().top ?? 0;
+          const candidates = [...view.contentEl.querySelectorAll('[data-inkstone-from]')].filter(node => {
+            const mapped = this.readingTargets.get(node);
+            return mapped?.filePath === context.filePath && mapped.snapshot === context.snapshot && node.getBoundingClientRect().height > 0;
+          });
+          const nearest = direction > 0 ? candidates.find(node => node.getBoundingClientRect().bottom >= top)
+            : candidates.reverse().find(node => node.getBoundingClientRect().top <= top);
+          position = nearest ? Number(nearest.dataset.inkstoneFrom) + (direction > 0 ? -1 : 1) : (direction > 0 ? Infinity : -1);
+        }
+      }
+      const record = direction > 0 ? records.find(item => item.from > position) : [...records].reverse().find(item => item.from < position);
+      if (!record) throw new Error(direction > 0 ? '已到最后一条标注。' : '已到第一条标注。');
+      await this.revealAnnotation(record.from, context);
+    } catch (error) { new Notice(this.t(error.message)); }
+  }
+  restoreThoughtDraft() {
+    this.hideToolbars();
+    if (!this.sessionDrafts?.size) return new Notice(this.t('本次会话没有可恢复的想法草稿。'));
+    new ThoughtDraftModal(this).open();
+  }
+  selectedMarkdownFiles(selected) {
+    const files = new Map();
+    const visit = entry => {
+      if (Array.isArray(entry?.children)) entry.children.forEach(visit);
+      else if (entry?.extension === 'md') files.set(entry.path, entry);
+    };
+    selected.forEach(visit);
+    return [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
+  }
+  chooseExcerptSource() { new ExcerptSourceModal(this).open(); }
+  excerptLines(file, snapshot, path, generatedAt) {
+    const cached = this.app.metadataCache?.getFileCache(file)?.headings || [];
+    const candidates = [];
+    const formatted = /`|\*\*|__|~~|==|\[\[|\]\]|\[\^|!\[|\[[^\]]*\]\s*\([^)]*\)|<\/?[A-Za-z][^>]*>|<!--|-->|\*[^*\r\n]+\*|_[^_\r\n]+_/;
+    for (const heading of cached) {
+      const offset = heading.position?.start?.offset;
+      if (!Number.isInteger(offset) || offset < 0 || offset >= snapshot.length || (offset && !/[\r\n]/.test(snapshot[offset - 1]))) continue;
+      const [line, nextLine = ''] = snapshot.slice(offset).split(/\r\n|\r|\n/, 2);
+      const atx = line.match(/^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*$/);
+      const setext = nextLine.match(/^ {0,3}(=+|-+)[ \t]*$/);
+      const matches = atx ? atx[1].length === heading.level && atx[2].replace(/[ \t]+#+[ \t]*$/, '') === heading.heading
+        : setext && /^ {0,3}\S/.test(line) && (setext[1][0] === '=' ? 1 : 2) === heading.level && line.trim() === heading.heading;
+      if (!matches || !heading.heading || formatted.test(heading.heading)) continue;
+      const from = offset + (atx ? line.match(/^ {0,3}#{1,6}[ \t]+/)[0].length : line.indexOf(line.trim()));
+      candidates.push({ heading, from });
+    }
+    // Current source protection is shared across all candidates in this snapshot.
+    const allowed = new Set(annotationCore.unprotectedOffsets(snapshot, candidates.map(candidate => candidate.from)));
+    const headings = candidates.filter(candidate => allowed.has(candidate.from)).map(candidate => candidate.heading);
+    return annotationExcerpts.buildExcerptLines({ sourceName: file.basename, records: this.recordsFor(snapshot, file.path), generatedAt,
+      sourceLink: this.app.fileManager.generateMarkdownLink(file, path, '', this.t('原文')), headings,
+      linkForHeading: heading => this.app.fileManager.generateMarkdownLink(file, path, '#' + heading.heading, this.t('原文')),
+      labelForRecord: record => this.annotationLabel(record), t: (source, params) => this.t(source, params) });
+  }
+  uniqueExcerptPath(base) {
+    let path = `${base}.md`, sequence = 2;
+    while (this.app.vault.getAbstractFileByPath(path)) path = `${base}-${sequence++}.md`;
+    return path;
   }
   async exportAnnotations() {
     try {
@@ -718,20 +874,26 @@ module.exports = class InkstoneAnnotations extends Plugin {
       this.assertCurrent(context);
       const file = context.view.file;
       const folder = file.parent?.path && file.parent.path !== '/' ? file.parent.path + '/' : '';
-      const base = `${folder}${file.basename}-墨读摘录`;
-      let path = `${base}.md`, sequence = 2;
-      while (this.app.vault.getAbstractFileByPath(path)) path = `${base}-${sequence++}.md`;
-      const link = this.app.fileManager.generateMarkdownLink(file, path, '', '原文');
-      const lines = [`# ${file.basename} · 墨读摘录`, '', `来源：${link}`, ''];
-      for (const [index, record] of context.records.entries()) {
-        const label = record.kind === 'underline' ? '下划线' : PALETTE.find(([color]) => color === record.color)?.[1] || '高亮';
-        const literal = record.text.replace(/[\\`*_{}\[\]()#+.!<>|~=$&-]/g, character => '\\' + character);
-        lines.push(`## ${index + 1}. ${label}`, '', ...literal.split(/\r\n|\r|\n/).map(line => `> ${line}`), '');
-        if (record.note) lines.push('备注：', '', record.note, '');
-      }
+      const path = this.uniqueExcerptPath(`${folder}${file.basename}-墨读摘录`);
+      const lines = this.excerptLines(file, context.snapshot, path, new Date().toISOString());
       const exported = await this.app.vault.create(path, lines.join('\n'));
       await this.app.workspace.getLeaf('tab').openFile(exported);
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
+  }
+  async exportSelectedAnnotations(selected) {
+    try {
+      const files = this.selectedMarkdownFiles(selected);
+      const path = this.uniqueExcerptPath('墨读摘录汇总');
+      const generatedAt = new Date().toISOString(), sections = [];
+      for (const file of files) {
+        const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view).find(view => view.file?.path === file.path);
+        const snapshot = view ? (view.getMode() === 'preview' ? view.getViewData() : view.editor.getValue()) : await this.app.vault.cachedRead(file);
+        if (this.recordsFor(snapshot, file.path).length) sections.push(this.excerptLines(file, snapshot, path, generatedAt).join('\n'));
+      }
+      if (!sections.length) throw new Error('所选笔记没有墨读标注。');
+      const exported = await this.app.vault.create(path, sections.join('\n---\n\n'));
+      await this.app.workspace.getLeaf('tab').openFile(exported);
+    } catch (error) { new Notice(this.t(error.message)); }
   }
   turnPage(direction) {
     try {
@@ -740,6 +902,6 @@ module.exports = class InkstoneAnnotations extends Plugin {
       if (!scroller) return;
       const distance = Math.max(1, scroller.clientHeight - Math.min(80, scroller.clientHeight * 0.15));
       scroller.scrollTo({ top: Math.max(0, Math.min(scroller.scrollTop + direction * distance, scroller.scrollHeight - scroller.clientHeight)), left: scroller.scrollLeft, behavior: 'instant' });
-    } catch (error) { new Notice(error.message); }
+    } catch (error) { new Notice(this.t(error.message)); }
   }
 };

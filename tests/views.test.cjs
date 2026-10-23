@@ -81,8 +81,161 @@ function setup() {
   };
   const Sidebar = module.exports.createSidebarClass(plugin);
   const view = new Sidebar({});
-  return { view, workspace, vault, calls, get context() { return context; }, setContext: value => { context = value; } };
+  return { view, plugin, workspace, vault, calls, get context() { return context; }, setContext: value => { context = value; } };
 }
+
+const searchInput = view => allNodes(view.contentEl).find(node => node.tagName === 'input' && node.attributes['aria-label'] === '搜索摘录和想法');
+const thoughtsInput = view => allNodes(view.contentEl).find(node => node.tagName === 'input' && node.type === 'checkbox');
+function search(view, value) {
+  const input = searchInput(view);
+  assert.ok(input, 'the sidebar provides current-note search');
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+}
+
+test('current-note search finds excerpt or thought text regardless of case and ignores surrounding spaces', async () => {
+  const fixture = setup();
+  fixture.setContext({ ...fixture.context, records: [
+    record(0, 'highlight', 'yellow', 'Reading Alpha'),
+    record(30, 'highlight', 'blue', '另一段原文', 'Remember BETA tomorrow'),
+    record(60, 'underline', null, '没有匹配词'),
+  ] });
+  await fixture.view.onOpen();
+  search(fixture.view, '  aLPHA  ');
+  assert.equal(cards(fixture.view).length, 1);
+  assert.match(text(cards(fixture.view)[0]), /Reading Alpha/);
+  search(fixture.view, 'beta');
+  assert.equal(cards(fixture.view).length, 1);
+  assert.match(text(cards(fixture.view)[0]), /Remember BETA tomorrow/);
+  search(fixture.view, '   ');
+  assert.equal(cards(fixture.view).length, 3);
+  search(fixture.view, 'Alpha');
+  search(fixture.view, '');
+  assert.equal(cards(fixture.view).length, 3);
+});
+
+test('search, color and thoughts-only filters compose while export retains every current-note annotation', async () => {
+  const fixture = setup();
+  fixture.setContext({ ...fixture.context, records: [
+    record(0, 'highlight', 'yellow', 'target without thought'),
+    record(30, 'highlight', 'yellow', 'target with blank thought', '  \n '),
+    record(60, 'highlight', 'yellow', 'target with thought', '复习'),
+    record(90, 'highlight', 'blue', 'target blue', '复习'),
+    record(120, 'underline', null, 'another excerpt', 'target thought'),
+  ] });
+  await fixture.view.onOpen();
+  search(fixture.view, 'target');
+  const thoughts = thoughtsInput(fixture.view);
+  assert.ok(thoughts, 'the sidebar provides a thoughts-only filter');
+  thoughts.checked = true;
+  thoughts.dispatchEvent(new Event('change'));
+  assert.equal(cards(fixture.view).length, 3);
+  const filter = allNodes(fixture.view.contentEl).find(node => node.tagName === 'select');
+  filter.value = 'yellow';
+  filter.dispatchEvent(new Event('change'));
+  assert.equal(cards(fixture.view).length, 1);
+  assert.match(text(cards(fixture.view)[0]), /target with thought/);
+  assert.match(text(fixture.view.contentEl), /1 \/ 5 条标注/);
+  search(fixture.view, 'absent');
+  assert.equal(cards(fixture.view).length, 0);
+  assert.match(text(fixture.view.contentEl), /没有符合搜索或筛选条件的标注/);
+  assert.match(text(fixture.view.contentEl), /0 \/ 5 条标注/);
+  const exportAll = button(fixture.view, '导出全部');
+  assert.equal(exportAll.disabled, false);
+  assert.match(exportAll.attributes['aria-description'], /全部 5 条标注/);
+  assert.match(exportAll.attributes['aria-description'], /筛选未显示/);
+  exportAll.dispatchEvent(new Event('click'));
+  assert.deepEqual(fixture.calls, [['export']]);
+});
+
+test('search and thought controls keep their identity and keyboard focus through filters and source edits', async () => {
+  const fixture = setup();
+  await fixture.view.onOpen();
+  const input = searchInput(fixture.view);
+  assert.ok(input, 'the sidebar provides current-note search');
+  const thoughts = thoughtsInput(fixture.view);
+  const filter = allNodes(fixture.view.contentEl).find(node => node.tagName === 'select');
+  const exportAll = button(fixture.view, '导出全部');
+  const clear = button(fixture.view, '清空筛选');
+  assert.ok(clear, 'filters can be cleared explicitly');
+  input.focus();
+  search(fixture.view, '记得');
+  assert.equal(searchInput(fixture.view), input);
+  assert.equal(fixture.view.contentEl.ownerDocument.activeElement, input);
+  fixture.setContext({ ...fixture.context, snapshot: '新正文', records: [record(0, 'highlight', 'yellow', '新摘录', '记得继续阅读')] });
+  fixture.workspace.emit('editor-change');
+  assert.equal(searchInput(fixture.view), input);
+  assert.equal(fixture.view.contentEl.ownerDocument.activeElement, input);
+  assert.match(text(cards(fixture.view)[0]), /记得继续阅读/);
+  thoughts.focus();
+  thoughts.checked = true;
+  thoughts.dispatchEvent(new Event('change'));
+  assert.equal(thoughtsInput(fixture.view), thoughts);
+  assert.equal(fixture.view.contentEl.ownerDocument.activeElement, thoughts);
+  filter.value = 'blue';
+  filter.dispatchEvent(new Event('change'));
+  clear.focus();
+  clear.dispatchEvent(new Event('click'));
+  assert.equal(button(fixture.view, '清空筛选'), clear);
+  assert.equal(fixture.view.contentEl.ownerDocument.activeElement, clear);
+  assert.equal(input.value, '');
+  assert.equal(thoughts.checked, false);
+  assert.equal(filter.value, 'all');
+  assert.equal(cards(fixture.view).length, 1);
+  assert.equal(button(fixture.view, '导出全部'), exportAll);
+});
+
+test('switching notes resets current-note filters and empty notes remain distinct from unmatched searches', async () => {
+  const fixture = setup();
+  await fixture.view.onOpen();
+  search(fixture.view, '记得');
+  const filter = allNodes(fixture.view.contentEl).find(node => node.tagName === 'select');
+  filter.value = 'yellow';
+  filter.dispatchEvent(new Event('change'));
+  const thoughts = thoughtsInput(fixture.view);
+  thoughts.checked = true;
+  thoughts.dispatchEvent(new Event('change'));
+  fixture.setContext({ ...fixture.context, filePath: '阅读/下一篇.md', snapshot: '下一篇', records: [record(0, 'underline', null, '下一篇原文')] });
+  fixture.workspace.emit('active-leaf-change', { view: { getViewType: () => 'markdown' } });
+  assert.equal(searchInput(fixture.view).value, '');
+  assert.equal(thoughts.checked, false);
+  assert.equal(filter.value, 'all');
+  assert.equal(cards(fixture.view).length, 1);
+  fixture.setContext({ ...fixture.context, snapshot: '无标注', records: [] });
+  fixture.workspace.emit('editor-change');
+  assert.match(text(fixture.view.contentEl), /当前笔记暂无标注/);
+  assert.equal(button(fixture.view, '导出全部').disabled, true);
+  fixture.workspace.emit('active-leaf-change', { view: { getViewType: () => 'empty' } });
+  assert.match(text(fixture.view.contentEl), /暂无当前笔记/);
+  assert.equal(searchInput(fixture.view).disabled, true);
+  assert.equal(thoughts.disabled, true);
+});
+
+test('language and custom color labels refresh without changing persisted filter values', async () => {
+  const fixture = setup();
+  let customLabel = '需要复习';
+  fixture.plugin.annotationLabel = record => record.kind === 'underline' ? '下划线' : record.color === 'yellow' ? customLabel : '其他高亮';
+  await fixture.view.onOpen();
+  const filter = allNodes(fixture.view.contentEl).find(node => node.tagName === 'select');
+  const yellow = filter.children.find(option => option.value === 'yellow');
+  assert.equal(yellow.textContent, '需要复习');
+  filter.value = 'yellow';
+  filter.dispatchEvent(new Event('change'));
+  assert.match(text(cards(fixture.view)[0]), /需要复习/);
+  customLabel = 'Review';
+  fixture.plugin.t = (source, params = {}) => {
+    const translated = ({ '当前笔记标注': 'Current note annotations', '搜索摘录和想法': 'Search excerpts and thoughts', '导出全部': 'Export all', '{shown} / {total} 条标注': '{shown} / {total} annotations' })[source] || source;
+    return translated.replace(/\{(\w+)\}/g, (_, name) => params[name]);
+  };
+  fixture.view.render();
+  assert.equal(filter.value, 'yellow');
+  assert.equal(yellow.textContent, 'Review');
+  assert.equal(fixture.view.getDisplayText(), 'Current note annotations');
+  assert.ok(button(fixture.view, 'Export all'));
+  assert.match(text(fixture.view.contentEl), /1 \/ 2 annotations/);
+  assert.match(text(cards(fixture.view)[0]), /Review/);
+  assert.ok(allNodes(fixture.view.contentEl).find(node => node.attributes['aria-label'] === 'Search excerpts and thoughts'));
+});
 
 test('sidebar lists current excerpts and notes as text and filters underline independently from colors', async () => {
   const fixture = setup();

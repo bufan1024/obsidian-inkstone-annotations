@@ -16,6 +16,7 @@ function fixture() {
     setHeading() { this.heading = true; return this; }
     addToggle(callback) { callback({ setValue() { return this; }, onChange() {} }); return this; }
     addDropdown(callback) { callback({ addOptions() { return this; }, setValue() { return this; }, onChange() {} }); return this; }
+    addText(callback) { callback({ setValue() { return this; }, setPlaceholder() { return this; }, onChange() {} }); return this; }
     addButton(callback) { callback({ setButtonText() { return this; }, onClick() {} }); return this; }
   }
   const context = vm.createContext({
@@ -39,7 +40,7 @@ test('settings sections use native headings with their original names and keep t
   };
   tab.display();
   assert.deepEqual(settings.filter(setting => setting.heading).map(setting => setting.name), ['墨读阅读与标注', '阅读排版']);
-  assert.deepEqual(settings.filter(setting => !setting.heading).map(setting => setting.name), ['墨水屏显示', '快捷标注条', '阅读行高', '阅读行宽', '恢复阅读预设']);
+  assert.deepEqual(settings.filter(setting => !setting.heading).map(setting => setting.name), ['墨水屏显示', '快捷标注条', '界面语言 / Interface language', '颜色含义', '黄色', '绿色', '蓝色', '粉色', '阅读行高', '阅读行宽', '恢复阅读预设']);
   assert.equal(elements.some(element => /^h[1-6]$/.test(element.tag)), false);
   assert.match(elements.find(element => element.tag === 'p').text, /字号与字体/);
 });
